@@ -60,3 +60,52 @@ Then, load the package.
 ```{r}
 library(pictplot)
 ```
+
+## Example image
+
+The ```pictplot``` package includes an image data, which is useful when you want to see how a function works right away. The variable name of the image is ```regatta```.
+
+Internally, this is just a numeric array of size 450 x 600 x 3 [y-coordinate, x-coordinate, color channel], meaning that it is 450 pix height and 600 pix width, and has three color channels (Red, Green, and Blue). Each element of the array represents a pixel value, which can range between 0 and 1.
+
+```{r}
+dim(regatta)
+```
+
+Image size information can be shown by typing the variable name.
+
+```{r}
+regatta
+```
+
+To plot an image, use the ```plot()``` function.
+
+```{r, eval=FALSE, echo=TRUE}
+plot(regatta)
+```
+
+<img src="notes/regatta.png" width="60%">
+
+## Load an image
+
+To load an image you like, use the ```im_load()``` function.
+
+```{r, eval=FALSE, echo=TRUE}
+im = im_load("path/to/your/image.jpg")
+```
+
+The jpg, png, and bmp formats are supported.
+
+You can load an image from the web (URL). For example, 
+
+```{r, eval=FALSE, echo=TRUE}
+im = im_load("https://raw.githubusercontent.com/tsuda16k/pictplot/master/notes/face.png")
+plot(im)
+```
+
+will load an image of a face.
+
+<img src="notes/face.png" width="35%">
+
+## Functionality
+
+WIP
