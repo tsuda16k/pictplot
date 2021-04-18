@@ -1,0 +1,10 @@
+^pictplot\.Rproj$
+^\.Rproj\.user$
+^LICENSE\.md$
+^README\.Rmd$
+^cran-comments.md$
+^notes$
+^memo$
+.git
+.gitignore
+.DS_Store
