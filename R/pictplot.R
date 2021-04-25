@@ -1217,6 +1217,17 @@ merge_color = function( imlist ){
 # image transform ----
 
 
+#' Reverse pixel values
+#' @param im an image
+#' @return an image
+#' @examples
+#' plot(im_reverse(regatta))
+#' @export
+im_reverse = function( im ){
+  return( 1 - im )
+}
+
+
 #' Replicate a channel along color dimension
 #' @param im an image
 #' @param n number of repeat
@@ -1796,6 +1807,7 @@ im_glitch = function( im ){
     return
 }
 
+
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # luminance ----
 
@@ -1840,6 +1852,52 @@ get_L = function( im, scale = TRUE ){
   } else {
     return( get_R( sRGB2Lab( im ) ) )
   }
+}
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Masking ----
+
+
+#' Create a circular mask image
+#' @param height image height
+#' @param width image width
+#' @param cy circle center y
+#' @param cx circle center x
+#' @param r circle radius
+#' @return an image
+#' @examples
+#' mask = get_circular_mask( 100, 200, 50, 50, 20 )
+#' plot(mask)
+#' @export
+get_circular_mask = function( height, width, cy, cx, r ){
+  v = matrix( 1:height - cy, ncol = width, nrow = height, byrow = FALSE )
+  u = matrix( 1:width - cx, ncol = width, nrow = height, byrow = TRUE )
+  D = u^2 + v^2
+  im = matrix( TRUE, nrow = height, ncol = width )
+  im[ D > r^2 ] = FALSE
+  return( nimg( im ) )
+}
+
+
+#' Create a oval mask image
+#' @param height image height
+#' @param width image width
+#' @param cy oval center y
+#' @param cx oval center x
+#' @param ry oval radius y
+#' @param rx oval radius x
+#' @return an image
+#' @examples
+#' mask = get_oval_mask(100, 200, 50, 10, 20, 40 )
+#' plot(mask)
+#' @export
+get_oval_mask = function( height, width, cy, cx, ry, rx ){
+  im = nimg( array( 0, c( height, width, 1 ) ) )
+  yy = im_coord( im, "y" )
+  xx = im_coord( im, "x" )
+  D = ( xx - cx )^2 / rx^2 + ( yy - cy )^2 / ry^2 <= 1
+  return( nimg( D ) )
 }
 
 
