@@ -351,6 +351,11 @@ list2matrix = function( x ){
 }
 
 
+colorder = function( df, name ){
+  df[ , c( name, setdiff( names( df ), name ) ) ]
+}
+
+
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # color space ----
 
@@ -784,6 +789,19 @@ ramp_threshold = function( x, eta, phi ){
   y[ x >= eta ] = 1
   y[ x < eta ] = 1 + tanh( phi * ( y[ x < eta ] - eta ) )
   return( y )
+}
+
+
+#' Generates a logarithmically spaced sequence
+#' @param from starting value
+#' @param to ending value
+#' @param length.out number of intervening values
+#' @return a numeric vector
+#' @examples
+#' logspace(10,100,10)
+#' @export
+logspace = function( from, to, length.out ){
+  exp(seq(log(from), log(to), length.out = length.out))
 }
 
 
@@ -1535,7 +1553,7 @@ im_resize_limit = function( im, bound, interpolation = 1 ){
 
 
 im_resize_limit_min = function( im, bound, interpolation = 1 ){
-  if( min( im_size( im ) ) < bound ){
+  if( min( im_size( im ) ) <= bound ){
     return( im )
   }
   if( im_width( im ) > im_height( im ) ){
@@ -1830,6 +1848,7 @@ im_gray = function( im, tricolored = FALSE ){
   if( ! tricolored ){
     im = get_R( im )
   }
+  im = clamping( im )
   return( im )
 }
 
@@ -2701,33 +2720,78 @@ fft_angular_mask = function( height, width, orientation = 0, angle = 0,
 
 #' Calculate orientation-averaged amplitude
 #' @param im an image
-#' @param step skip calculation
+#' @param range frequency range
+#' @param n number of samples
 #' @param mask if TRUE, apply circular mask before calculation
 #' @return a data frame
 #' @examples
-#' df = fft_amplitude1D(regatta, 4)
+#' df = fft_amplitude1D(regatta, step = 4)
 #' plot(df)
 #' @export
-fft_amplitude1D = function( im, step = 2, mask = F ){
+fft_amplitude1D = function( im, range = c( 10, 512 ), n = 20, mask = F ){
   im = im_crop_square( get_L( im ) )
   height = im_height( im )
   width = im_width( im )
   if( mask ){
     filt = fft_lowpass_kernel( "bw", height, width, height * 0.47, 20 )
+    filt = nimg( filt )
     im = filt * im + ( 1 - filt ) * mean( im )
   }
-  nyquist = floor( min( im_size( im ) ) / 2 )
-  dist = c( seq( 0, by = step, to = nyquist ) )
-  amplitudes = vector( "numeric", length( nyquist ) )
 
+  nyquist = floor( min( im_size( im ) ) / 2 )
+  dist = logspace( range[ 1 ], min( range[ 2 ], nyquist), n + 1 )
+
+  amplitudes = vector( "numeric", length( nyquist ) )
   imf = fft_amplitude( im ) * width * height
   for ( i in 1:length( dist ) - 1 ) {
-    mask = fft_angular_mask( height, width, 0, 2 * pi, c( dist[ i ], dist[ i + 1 ] ) )
-    amplitudes[ i ] = mean( imf[ mask > 0 ] )
+    maskim = fft_angular_mask( height, width, 0, 2 * pi, c( dist[ i ], dist[ i + 1 ] ) )
+    amplitudes[ i ] = mean( imf[ maskim > 0 ] )
   }
 
   df = data.frame( cpp = dist[ 2:length( dist ) ], amplitude = amplitudes )
+  df = stats::na.omit( df )
   return( df )
+}
+
+
+fft_slope = function( im, range = c( 10, 512 ), n = 10, mask = TRUE, showplot = FALSE, rawdata = FALSE ){
+  im = im_resize_limit_min( im, max( range ) * 2 )
+  im = im_crop_square( im_gray( im ) )
+
+  # add oval mask
+  if( mask ){
+    filt = fft_lowpass_kernel( "bw", im_height( im ), im_width( im ), im_height( im ) * 0.47, 20 )
+    filt = nimg( filt )
+    im = filt * im + ( 1 - filt ) * mean( im )
+  }
+  # fft_amplitude( im, modify = TRUE ) %>% plot
+
+  # calc spectral amplitude
+  dat = fft_amplitude1D( im, range, n, mask = FALSE )
+
+  # lm fit
+  df = data.frame( log_cpp = log10( dat$cpp ), log_amplitude = log10( dat$amplitude ) )
+  fit = stats::lm( log_amplitude ~ log_cpp, data = df )
+  slope = unname( fit$coefficients[ 2 ] )
+  df$slope = slope
+
+  # plot
+  if( showplot ){
+    fig = ggplot( df, aes( x = log_cpp, y = log_amplitude ) ) +
+      geom_point() +
+      geom_smooth( method = "lm", formula = y ~ x, se = FALSE ) +
+      annotate( "text", x = 1, y = 1, label = sprintf("b = %1.2f", slope), size = 7 ) +
+      scale_x_continuous( limits = c( 0, 4 ), breaks = 0:10, expand = c( 0, 0 ) ) +
+      scale_y_continuous( limits = c( 0, 4 ), breaks = 0:10, expand = c( 0, 0 ) ) +
+      theme_cowplot( 24 )
+    plot( fig )
+  }
+
+  if( rawdata ){
+    return( df )
+  } else {
+    return( slope )
+  }
 }
 
 
@@ -2944,6 +3008,150 @@ Reinhard_multiple = function( im, ref, sRGB = TRUE ){
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Fractal ----
+
+DBC = function( im, method = "DBC" ){
+  im = im_gray( im )
+  im = im_crop_square( im )
+  M = min( im_size( im ) )
+
+  if( method == "CDBC" ){
+    minpow = ceiling( log2( M^(1/3) ) )
+    bmin = 2^minpow;
+    bmax = bmin;
+    while( ( ceiling( M / bmax ) + 1 ) <= ceiling( M / ( bmax - 1 ) ) ){
+      bmax = bmax + 1;
+    }
+    boxes = seq( from = bmin, to = bmax, by = 2 )
+    S = boxes
+  } else {
+    Smax = floor( M / 2 )
+    N = c( 2^( 1:floor( log2( Smax ) ) ) )
+    S = rev( floor( M / N ) )
+    # S = N
+  }
+
+  Nr = rep( 0, length( S ) )
+  for( i in 1:length( S ) ){
+    Nr[ i ] = FD_nr( im, S[ i ], method )
+  }
+
+  invR = M / S
+  df = data.frame( X = log( invR ), Y = log( Nr ) )
+  fit = stats::lm( Y ~ X, data = df )
+
+  return( unname( fit$coefficients[ 2 ] ) )
+}
+
+
+FD_nr = function( im, s, method ){
+  rem_h = im_height( im ) %% s
+  rem_w = im_width( im ) %% s
+
+  m_top = floor( rem_h / 2 )
+  m_bottom = rem_h - m_top
+  m_left = floor( rem_w / 2 )
+  m_right = rem_w - m_left
+
+  im = im_crop( im, c( m_top, m_right, m_bottom, m_left ) )
+
+  M = min( im_size( im ) )
+  r = s / M
+  Ny = im_height( im ) / s
+  Nx = im_width( im ) / s
+
+  if( method == "Li2009" ){
+    a = 3
+    rprime = r / ( 1 + 2 * a * stats::sd( im ) )
+  }
+  Nr = 0
+  for( y in 1:Ny ){
+    for( x in 1:Nx ){
+      yy = ( 1 + ( y - 1 ) * s ):( y * s )
+      xx = ( 1 + ( x - 1 ) * s ):( x * s )
+      if( method == "DBC" ){
+        l = ceiling( max( im[ yy, xx, 1 ] ) / r ) %>% clamping( 1, min( Ny, Nx ) )
+        k = ceiling( min( im[ yy, xx, 1 ] ) / r ) %>% clamping( 1, min( Ny, Nx ) )
+        nr = l - k + 1
+      } else if( method == "RDBC" ){
+        dr = max( im[ yy, xx, 1 ] ) - min( im[ yy, xx, 1 ] )
+        nr = ifelse( dr == 0, 1, ceiling( dr / r ) )
+      } else if( method == "Li2009" ){
+        Imax = max( im[ yy, xx, 1 ] ) * 255
+        Imin = min( im[ yy, xx, 1 ] ) * 255
+        if( Imax == Imin ){
+          nr = 1
+        } else {
+          nr = ceiling( ( Imax - Imin ) / rprime )
+        }
+      } else if( method == "CDBC" ){
+        l = max( im[ yy, xx, 1 ] ) * 255
+        k = min( im[ yy, xx, 1 ] ) * 255
+        if( l == k ){
+          nr = 1
+        } else {
+          nr = ceiling( ( l - k ) / r )
+        }
+      } else if( method == "IDBC" ){
+        Imax = max( im[ yy, xx, 1 ] ) * 255
+        Imin = min( im[ yy, xx, 1 ] ) * 255
+        if( Imax == Imin ){
+          nr = 1
+        } else {
+          nr = ceiling( ( Imax - Imin + 1 ) / r )
+        }
+        nr_old = nr
+        # shift
+        dy = ifelse( y == Ny, -1, 1 )
+        dx = ifelse( x == Nx, -1, 1 )
+        yy = yy + dy
+        xx = xx + dx
+        Imax = max( im[ yy, xx, 1 ] ) * 255
+        Imin = min( im[ yy, xx, 1 ] ) * 255
+        if( Imax == Imin ){
+          nr = 1
+        } else {
+          nr = ceiling( ( Imax - Imin + 1 ) / r )
+        }
+        nr = max( nr, nr_old )
+      } else if( method == "IMDBC" ){
+        Imax = max( im[ yy, xx, 1 ] ) * 255
+        Imin = min( im[ yy, xx, 1 ] ) * 255
+        # Imax = ceiling( max( im[ yy, xx, 1 ] ) * 256 ) - 1
+        # Imin = ceiling( min( im[ yy, xx, 1 ] ) * 256 ) - 1
+        if( Imax == Imin ){
+          nr = ifelse( Imax == 0, 0, 1 )
+        } else {
+          h = r * ( Imax - Imin - 1 )
+          nr = ceiling( ( Imax - Imin + 1 ) / h )
+        }
+        nr_old = nr
+        # shift
+        dy = ifelse( y == Ny, -1, 1 )
+        dx = ifelse( x == Nx, -1, 1 )
+        yy = yy + dy
+        xx = xx + dx
+        Imax = max( im[ yy, xx, 1 ] ) * 255
+        Imin = min( im[ yy, xx, 1 ] ) * 255
+        # Imax = ceiling( max( im[ yy, xx, 1 ] ) * 256 ) - 1
+        # Imin = ceiling( min( im[ yy, xx, 1 ] ) * 256 ) - 1
+        if( Imax == Imin ){
+          nr = ifelse( Imax == 0, 0, 1 )
+        } else {
+          h = r * ( Imax - Imin - 1 )
+          nr = ceiling( ( Imax - Imin + 1 ) / h )
+        }
+        nr = max( nr, nr_old )
+      }
+      Nr = Nr + nr
+    }
+  }
+
+  return( Nr )
+}
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # CFS ----
 
 
@@ -2960,7 +3168,7 @@ Reinhard_multiple = function( im, ref, sRGB = TRUE ){
 #' plot(create_dead_leaves(128))
 #' @export
 create_dead_leaves = function( height, width = height, shape = "square", grayscale = FALSE,
-                               sigma_n = 2, rmin = 0.02, rmax = 0.5 ){
+                               sigma_n = 2, rmin = 0.02, rmax = 0.4 ){
   k = 100
   r_list = seq(
     from = rmin * max( width, height ), to = rmax * max( width, height ), length.out = k )
