@@ -2738,80 +2738,60 @@ fft_angular_mask = function( height, width, orientation = 0, angle = 0,
 #' @param range frequency range
 #' @param n number of samples
 #' @param mask if TRUE, apply circular mask before calculation
+#' @param linear.sample if TRUE,
+#' @param rawdata if TRUE, raw data is returned as well as slope value
+#' @param show.plot if TRUE, figure is displayed
 #' @return a data frame
 #' @examples
-#' df = fft_amplitude1D(regatta)
-#' plot(df)
+#' fft_slope(regatta)
+#' fft_slope(regatta, rawdata = TRUE, show.plot = TRUE)
 #' @export
-fft_amplitude1D = function( im, range = c( 10, 512 ), n = 20, mask = F ){
-  im = im_crop_square( get_L( im ) )
+fft_slope = function( im, range = c(10, 512), n = 10, mask = TRUE, linear.sample = TRUE,
+                      rawdata = FALSE, show.plot = FALSE ){
+  im = im_crop_square( im_gray( im ) )
   height = im_height( im )
   width = im_width( im )
+
+  # add oval mask to the input image
   if( mask ){
     filt = fft_lowpass_kernel( "bw", height, width, height * 0.47, 20 )
     filt = nimg( filt )
     im = filt * im + ( 1 - filt ) * mean( im )
   }
 
+  # sample bins (distance from the origin) for rotational averaging
   nyquist = floor( min( im_size( im ) ) / 2 )
-  dist = logspace( range[ 1 ], min( range[ 2 ], nyquist), n + 1 )
+  if( linear.sample ){
+    dist = logspace( range[ 1 ], min( range[ 2 ], nyquist ), n + 1 )
+  } else {
+    dist = seq( from = range[ 1 ], to = min( range[ 2 ], nyquist ), length.out = n + 1 )
+  }
 
-  amplitudes = vector( "numeric", length( nyquist ) )
+  # calculate rotational average amplitude
+  amplitudes = vector( "numeric", n )
   imf = fft_amplitude( im ) * width * height
-  for ( i in 1:length( dist ) - 1 ) {
+  for ( i in 1:( length( dist ) - 1 ) ) {
     maskim = fft_angular_mask( height, width, 0, 2 * pi, c( dist[ i ], dist[ i + 1 ] ) )
     amplitudes[ i ] = mean( imf[ maskim > 0 ] )
   }
 
-  df = data.frame( cpp = dist[ 2:length( dist ) ], amplitude = amplitudes )
-  df = stats::na.omit( df )
-  return( df )
-}
-
-
-#' Calculate fourier slope
-#' @param im an image
-#' @param range frequency range
-#' @param n number of samples
-#' @param mask if TRUE, apply circular mask before calculation
-#' @param showplot if TRUE, dislays a plot
-#' @param rawdata if TRUE, raw data is returned as well as slope value
-#' @return a numeric value or a data frame
-#' @examples
-#' fft_slope(regatta)
-#' @export
-fft_slope = function( im, range = c( 10, 512 ), n = 10, mask = TRUE, showplot = FALSE, rawdata = FALSE ){
-  im = im_resize_limit_min( im, max( range ) * 2 )
-  im = im_crop_square( im_gray( im ) )
-
-  # add oval mask
-  if( mask ){
-    filt = fft_lowpass_kernel( "bw", im_height( im ), im_width( im ), im_height( im ) * 0.47, 20 )
-    filt = nimg( filt )
-    im = filt * im + ( 1 - filt ) * mean( im )
-  }
-  # fft_amplitude( im, modify = TRUE ) %>% plot
-
-  # calc spectral amplitude
-  dat = fft_amplitude1D( im, range, n, mask = FALSE )
-
   # lm fit
+  dat = data.frame( cpp = dist[ 2:length( dist ) ], amplitude = amplitudes )
+  dat = stats::na.omit( dat )
   df = data.frame( log_cpp = log10( dat$cpp ), log_amplitude = log10( dat$amplitude ) )
   fit = stats::lm( log_amplitude ~ log_cpp, data = df )
   slope = unname( fit$coefficients[ 2 ] )
-  df$slope = slope
+  df$slope = as.numeric( sprintf( "%1.3f", slope ) )
 
-  # plot
-  # if( showplot ){
-  #   fig = ggplot( df, aes( x = log_cpp, y = log_amplitude ) ) +
-  #     geom_point() +
-  #     geom_smooth( method = "lm", formula = y ~ x, se = FALSE ) +
-  #     annotate( "text", x = 1, y = 1, label = sprintf("b = %1.2f", slope), size = 7 ) +
-  #     scale_x_continuous( limits = c( 0, 4 ), breaks = 0:10, expand = c( 0, 0 ) ) +
-  #     scale_y_continuous( limits = c( 0, 4 ), breaks = 0:10, expand = c( 0, 0 ) ) +
-  #     theme_cowplot( 24 )
-  #   plot( fig )
-  # }
+  if( show.plot ){
+    fig = ggplot( df, aes_string( x = "log_cpp", y = "log_amplitude" ) ) +
+      geom_point() +
+      geom_smooth( method = "lm", formula = y ~ x, se = FALSE ) +
+      annotate( "text", x = 1, y = 1, label = sprintf("b = %1.3f", slope), size = 7 ) +
+      scale_x_continuous( limits = c( 0, 4 ), breaks = 0:10, expand = c( 0, 0 ) ) +
+      scale_y_continuous( limits = c( 0, 4 ), breaks = 0:10, expand = c( 0, 0 ) )
+    plot( fig )
+  }
 
   if( rawdata ){
     return( df )
@@ -2821,10 +2801,14 @@ fft_slope = function( im, range = c( 10, 512 ), n = 10, mask = TRUE, showplot = 
 }
 
 
-fft_noise = function(){
-  height = 128 * 2
-  width  = 128 * 2
-
+#' Generate a white noise image
+#' @param height image height
+#' @param width image width
+#' @return an image
+#' @examples
+#' plot(fft_noise(128, 128))
+#' @export
+fft_noise = function( height, width ){
   # mean(im^2) = sum(A^2)
   # replace all A values with sqrt( mean(a^2) )
   tgt = 0.5
@@ -2833,7 +2817,8 @@ fft_noise = function(){
 
   im2 = Re( stats::fft( A * exp( 1i * p ), inverse = T ) ) %>% rescaling01 %>% nimg
   # plot(im2)
-  fft_amplitude1D( im2, 2 ) %>% plot
+  # fft_slope( im2 )
+  return( im2 )
 }
 
 

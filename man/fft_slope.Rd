@@ -2,15 +2,16 @@
 % Please edit documentation in R/pictplot.R
 \name{fft_slope}
 \alias{fft_slope}
-\title{Calculate fourier slope}
+\title{Calculate orientation-averaged amplitude}
 \usage{
 fft_slope(
   im,
   range = c(10, 512),
   n = 10,
   mask = TRUE,
-  showplot = FALSE,
-  rawdata = FALSE
+  linear.sample = TRUE,
+  rawdata = FALSE,
+  show.plot = FALSE
 )
 }
 \arguments{
@@ -22,16 +23,19 @@ fft_slope(
 
 \item{mask}{if TRUE, apply circular mask before calculation}
 
-\item{showplot}{if TRUE, dislays a plot}
+\item{linear.sample}{if TRUE,}
 
 \item{rawdata}{if TRUE, raw data is returned as well as slope value}
+
+\item{show.plot}{if TRUE, figure is displayed}
 }
 \value{
-a numeric value or a data frame
+a data frame
 }
 \description{
-Calculate fourier slope
+Calculate orientation-averaged amplitude
 }
 \examples{
 fft_slope(regatta)
+fft_slope(regatta, rawdata = TRUE, show.plot = TRUE)
 }
