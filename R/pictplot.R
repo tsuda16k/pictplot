@@ -1558,6 +1558,15 @@ im_resize_limit = function( im, bound, interpolation = 1 ){
 }
 
 
+#' Resize image
+#' @param im an image
+#' @param bound max image size (width/height)
+#' @param interpolation Interpolation method. Either 0 (nearest-neighbor), 1 (linear), or 2 (cubic).
+#' @return an image
+#' @examples
+#' dim(regatta)
+#' dim(im_resize_limit_min(regatta, 200))
+#' @export
 im_resize_limit_min = function( im, bound, interpolation = 1 ){
   if( min( im_size( im ) ) <= bound ){
     return( im )
