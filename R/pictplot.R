@@ -351,6 +351,11 @@ list2matrix = function( x ){
 }
 
 
+#' change the column order of a data frame
+#' @param df a data frame
+#' @param name column names
+#' @return a data frame
+#' @export
 colorder = function( df, name ){
   df[ , c( name, setdiff( names( df ), name ) ) ]
 }
