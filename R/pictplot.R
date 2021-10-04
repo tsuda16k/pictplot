@@ -3,6 +3,7 @@
 #' @importFrom stringr str_match str_split str_sub
 #' @importFrom graphics plot
 #' @importFrom magrittr mod "%>%"
+#' @import ggplot2
 NULL
 
 
@@ -2730,7 +2731,7 @@ fft_angular_mask = function( height, width, orientation = 0, angle = 0,
 #' @param mask if TRUE, apply circular mask before calculation
 #' @return a data frame
 #' @examples
-#' df = fft_amplitude1D(regatta, step = 4)
+#' df = fft_amplitude1D(regatta)
 #' plot(df)
 #' @export
 fft_amplitude1D = function( im, range = c( 10, 512 ), n = 20, mask = F ){
@@ -2759,6 +2760,17 @@ fft_amplitude1D = function( im, range = c( 10, 512 ), n = 20, mask = F ){
 }
 
 
+#' Calculate fourier slope
+#' @param im an image
+#' @param range frequency range
+#' @param n number of samples
+#' @param mask if TRUE, apply circular mask before calculation
+#' @param showplot if TRUE, dislays a plot
+#' @param rawdata if TRUE, raw data is returned as well as slope value
+#' @return a numeric value or a data frame
+#' @examples
+#' fft_slope(regatta)
+#' @export
 fft_slope = function( im, range = c( 10, 512 ), n = 10, mask = TRUE, showplot = FALSE, rawdata = FALSE ){
   im = im_resize_limit_min( im, max( range ) * 2 )
   im = im_crop_square( im_gray( im ) )
@@ -2781,16 +2793,16 @@ fft_slope = function( im, range = c( 10, 512 ), n = 10, mask = TRUE, showplot = 
   df$slope = slope
 
   # plot
-  if( showplot ){
-    fig = ggplot( df, aes( x = log_cpp, y = log_amplitude ) ) +
-      geom_point() +
-      geom_smooth( method = "lm", formula = y ~ x, se = FALSE ) +
-      annotate( "text", x = 1, y = 1, label = sprintf("b = %1.2f", slope), size = 7 ) +
-      scale_x_continuous( limits = c( 0, 4 ), breaks = 0:10, expand = c( 0, 0 ) ) +
-      scale_y_continuous( limits = c( 0, 4 ), breaks = 0:10, expand = c( 0, 0 ) ) +
-      theme_cowplot( 24 )
-    plot( fig )
-  }
+  # if( showplot ){
+  #   fig = ggplot( df, aes( x = log_cpp, y = log_amplitude ) ) +
+  #     geom_point() +
+  #     geom_smooth( method = "lm", formula = y ~ x, se = FALSE ) +
+  #     annotate( "text", x = 1, y = 1, label = sprintf("b = %1.2f", slope), size = 7 ) +
+  #     scale_x_continuous( limits = c( 0, 4 ), breaks = 0:10, expand = c( 0, 0 ) ) +
+  #     scale_y_continuous( limits = c( 0, 4 ), breaks = 0:10, expand = c( 0, 0 ) ) +
+  #     theme_cowplot( 24 )
+  #   plot( fig )
+  # }
 
   if( rawdata ){
     return( df )
@@ -3015,6 +3027,13 @@ Reinhard_multiple = function( im, ref, sRGB = TRUE ){
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Fractal ----
 
+#' Calculate fractal dimension
+#' @param im an image
+#' @param method either "DBC", "RDBC", or "IDBC"
+#' @return a numeric
+#' @examples
+#' DBC(regatta)
+#' @export
 DBC = function( im, method = "DBC" ){
   im = im_gray( im )
   im = im_crop_square( im )

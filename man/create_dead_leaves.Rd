@@ -11,7 +11,7 @@ create_dead_leaves(
   grayscale = FALSE,
   sigma_n = 2,
   rmin = 0.02,
-  rmax = 0.5
+  rmax = 0.4
 )
 }
 \arguments{

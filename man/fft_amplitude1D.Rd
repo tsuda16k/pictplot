@@ -4,12 +4,14 @@
 \alias{fft_amplitude1D}
 \title{Calculate orientation-averaged amplitude}
 \usage{
-fft_amplitude1D(im, step = 2, mask = F)
+fft_amplitude1D(im, range = c(10, 512), n = 20, mask = F)
 }
 \arguments{
 \item{im}{an image}
 
-\item{step}{skip calculation}
+\item{range}{frequency range}
+
+\item{n}{number of samples}
 
 \item{mask}{if TRUE, apply circular mask before calculation}
 }
@@ -20,6 +22,6 @@ a data frame
 Calculate orientation-averaged amplitude
 }
 \examples{
-df = fft_amplitude1D(regatta, 4)
+df = fft_amplitude1D(regatta)
 plot(df)
 }
