@@ -3024,13 +3024,16 @@ Reinhard_multiple = function( im, ref, sRGB = TRUE ){
 #' Calculate fractal dimension
 #' @param im an image
 #' @param method either "DBC", "RDBC", or "IDBC"
+#' @param n number of samples
 #' @return a numeric
 #' @examples
 #' DBC(regatta)
 #' @export
-DBC = function( im, method = "DBC" ){
+DBC = function( im, method = "DBC", n = 20 ){
   im = im_gray( im )
   im = im_crop_square( im )
+  im = ceiling( im * 256 )
+
   M = min( im_size( im ) )
 
   if( method == "CDBC" ){
@@ -3047,6 +3050,7 @@ DBC = function( im, method = "DBC" ){
     N = c( 2^( 1:floor( log2( Smax ) ) ) )
     S = rev( floor( M / N ) )
     # S = N
+    S = ceiling( logspace( 2, floor( M / 2 ), n ) )
   }
 
   Nr = rep( 0, length( S ) )
@@ -3056,6 +3060,8 @@ DBC = function( im, method = "DBC" ){
 
   invR = M / S
   df = data.frame( X = log( invR ), Y = log( Nr ) )
+  df = stats::na.omit( df )
+  df = df[is.finite(rowSums(df)),]
   fit = stats::lm( Y ~ X, data = df )
 
   return( unname( fit$coefficients[ 2 ] ) )
@@ -3063,20 +3069,12 @@ DBC = function( im, method = "DBC" ){
 
 
 FD_nr = function( im, s, method ){
-  rem_h = im_height( im ) %% s
-  rem_w = im_width( im ) %% s
-
-  m_top = floor( rem_h / 2 )
-  m_bottom = rem_h - m_top
-  m_left = floor( rem_w / 2 )
-  m_right = rem_w - m_left
-
-  im = im_crop( im, c( m_top, m_right, m_bottom, m_left ) )
-
   M = min( im_size( im ) )
   r = s / M
-  Ny = im_height( im ) / s
-  Nx = im_width( im ) / s
+  Ny = ceiling( im_height( im ) / s )
+  Nx = ceiling( im_width( im ) / s )
+  G = 256
+  sprime = G * s / M
 
   if( method == "Li2009" ){
     a = 3
@@ -3085,38 +3083,38 @@ FD_nr = function( im, s, method ){
   Nr = 0
   for( y in 1:Ny ){
     for( x in 1:Nx ){
-      yy = ( 1 + ( y - 1 ) * s ):( y * s )
-      xx = ( 1 + ( x - 1 ) * s ):( x * s )
+      yy = ( 1 + ( y - 1 ) * s ):( min( y * s, M ) )
+      xx = ( 1 + ( x - 1 ) * s ):( min( x * s, M ) )
       if( method == "DBC" ){
-        l = ceiling( max( im[ yy, xx, 1 ] ) / r ) %>% clamping( 1, min( Ny, Nx ) )
-        k = ceiling( min( im[ yy, xx, 1 ] ) / r ) %>% clamping( 1, min( Ny, Nx ) )
+        l = ceiling( max( im[ yy, xx, 1 ] ) / r / 256 ) %>% clamping( 1, min( Ny, Nx ) )
+        k = ceiling( min( im[ yy, xx, 1 ] ) / r / 256 ) %>% clamping( 1, min( Ny, Nx ) )
         nr = l - k + 1
       } else if( method == "RDBC" ){
         dr = max( im[ yy, xx, 1 ] ) - min( im[ yy, xx, 1 ] )
-        nr = ifelse( dr == 0, 1, ceiling( dr / r ) )
+        nr = ifelse( dr == 0, 1, ceiling( dr / sprime ) )
       } else if( method == "Li2009" ){
-        Imax = max( im[ yy, xx, 1 ] ) * 255
-        Imin = min( im[ yy, xx, 1 ] ) * 255
+        Imax = max( im[ yy, xx, 1 ] )
+        Imin = min( im[ yy, xx, 1 ] )
         if( Imax == Imin ){
           nr = 1
         } else {
           nr = ceiling( ( Imax - Imin ) / rprime )
         }
       } else if( method == "CDBC" ){
-        l = max( im[ yy, xx, 1 ] ) * 255
-        k = min( im[ yy, xx, 1 ] ) * 255
+        l = max( im[ yy, xx, 1 ] )
+        k = min( im[ yy, xx, 1 ] )
         if( l == k ){
           nr = 1
         } else {
-          nr = ceiling( ( l - k ) / r )
+          nr = ceiling( ( l - k ) / sprime )
         }
       } else if( method == "IDBC" ){
-        Imax = max( im[ yy, xx, 1 ] ) * 255
-        Imin = min( im[ yy, xx, 1 ] ) * 255
+        Imax = max( im[ yy, xx, 1 ] )
+        Imin = min( im[ yy, xx, 1 ] )
         if( Imax == Imin ){
           nr = 1
         } else {
-          nr = ceiling( ( Imax - Imin + 1 ) / r )
+          nr = ceiling( ( Imax - Imin + 1 ) / sprime )
         }
         nr_old = nr
         # shift
@@ -3124,23 +3122,22 @@ FD_nr = function( im, s, method ){
         dx = ifelse( x == Nx, -1, 1 )
         yy = yy + dy
         xx = xx + dx
-        Imax = max( im[ yy, xx, 1 ] ) * 255
-        Imin = min( im[ yy, xx, 1 ] ) * 255
+        Imax = max( im[ yy, xx, 1 ] )
+        Imin = min( im[ yy, xx, 1 ] )
         if( Imax == Imin ){
           nr = 1
         } else {
-          nr = ceiling( ( Imax - Imin + 1 ) / r )
+          nr = ceiling( ( Imax - Imin + 1 ) / sprime )
         }
         nr = max( nr, nr_old )
       } else if( method == "IMDBC" ){
-        Imax = max( im[ yy, xx, 1 ] ) * 255
-        Imin = min( im[ yy, xx, 1 ] ) * 255
-        # Imax = ceiling( max( im[ yy, xx, 1 ] ) * 256 ) - 1
-        # Imin = ceiling( min( im[ yy, xx, 1 ] ) * 256 ) - 1
+        Imax = ceiling( max( im[ yy, xx, 1 ] ) / r / 256 )
+        Imin = ceiling( min( im[ yy, xx, 1 ] ) / r / 256 )
         if( Imax == Imin ){
           nr = ifelse( Imax == 0, 0, 1 )
         } else {
           h = r * ( Imax - Imin - 1 )
+          # h = ifelse( h == 0, 1, h )
           nr = ceiling( ( Imax - Imin + 1 ) / h )
         }
         nr_old = nr
@@ -3149,14 +3146,13 @@ FD_nr = function( im, s, method ){
         dx = ifelse( x == Nx, -1, 1 )
         yy = yy + dy
         xx = xx + dx
-        Imax = max( im[ yy, xx, 1 ] ) * 255
-        Imin = min( im[ yy, xx, 1 ] ) * 255
-        # Imax = ceiling( max( im[ yy, xx, 1 ] ) * 256 ) - 1
-        # Imin = ceiling( min( im[ yy, xx, 1 ] ) * 256 ) - 1
+        Imax = ceiling( max( im[ yy, xx, 1 ] ) / r / 256 )
+        Imin = ceiling( min( im[ yy, xx, 1 ] ) / r / 256 )
         if( Imax == Imin ){
           nr = ifelse( Imax == 0, 0, 1 )
         } else {
           h = r * ( Imax - Imin - 1 )
+          # h = ifelse( h == 0, 1, h )
           nr = ceiling( ( Imax - Imin + 1 ) / h )
         }
         nr = max( nr, nr_old )

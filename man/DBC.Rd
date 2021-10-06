@@ -4,12 +4,14 @@
 \alias{DBC}
 \title{Calculate fractal dimension}
 \usage{
-DBC(im, method = "DBC")
+DBC(im, method = "DBC", n = 20)
 }
 \arguments{
 \item{im}{an image}
 
 \item{method}{either "DBC", "RDBC", or "IDBC"}
+
+\item{n}{number of samples}
 }
 \value{
 a numeric
