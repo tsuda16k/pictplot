@@ -2782,14 +2782,18 @@ fft_slope = function( im, range = c(10, 512), n = 10, mask = TRUE, linear.sample
   fit = stats::lm( log_amplitude ~ log_cpp, data = df )
   slope = unname( fit$coefficients[ 2 ] )
   df$slope = as.numeric( sprintf( "%1.3f", slope ) )
+  rmse = sqrt( mean( fit$residuals^2 ) ) %>% sprintf( "%1.4f", . ) %>% as.numeric
+  df$RMSE = rmse
 
+  vmax = ceiling( max( c( df$log_cpp, df$log_amplitude ) ) ) %>% max( c( ., 4) )
   if( show.plot ){
     fig = ggplot( df, aes_string( x = "log_cpp", y = "log_amplitude" ) ) +
       geom_point() +
       geom_smooth( method = "lm", formula = y ~ x, se = FALSE ) +
-      annotate( "text", x = 1, y = 1, label = sprintf("b = %1.3f", slope), size = 7 ) +
-      scale_x_continuous( limits = c( 0, 4 ), breaks = 0:10, expand = c( 0, 0 ) ) +
-      scale_y_continuous( limits = c( 0, 4 ), breaks = 0:10, expand = c( 0, 0 ) )
+      annotate( "text", x = 1, y = 1.2, label = sprintf("Slope = %1.3f", slope), size = 8 ) +
+      annotate( "text", x = 1, y = 0.8, label = sprintf("RMES = %1.4f", rmse),  size = 8 ) +
+      scale_x_continuous( limits = c( 0, vmax ), breaks = 0:vmax, expand = c( 0, 0 ) ) +
+      scale_y_continuous( limits = c( 0, vmax ), breaks = 0:vmax, expand = c( 0, 0 ) )
     plot( fig )
   }
 
@@ -2833,6 +2837,193 @@ fft_transfer = function( from, to, element ){
     im = inv_fft( A * exp( 1i * P ) )  %>% clamping
   }
   return( im )
+}
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# PHOG analysis ----
+
+#' Get a gradient image
+#' @param im an image
+#' @param starts.horizontal axis direction
+#' @return a list of images
+#' #' @examples
+#' G = get_gradient(regatta)
+#' plot(G$theta)
+#' plot(G$magnitude)
+#' @export
+get_gradient = function( im, starts.horizontal = TRUE ){
+  im2 = im_pad( im, n = 1, method = "mirror" )
+  gy = im_shift( im2, axis = "y", lag = -1 ) - im_shift( im2, axis = "y", lag = 1 )
+  gx = im_shift( im2, axis = "x", lag = -1 ) - im_shift( im2, axis = "x", lag = 1 )
+  gy = im_crop( gy, rep( 1, 4 ) ) # gy %>% visualize_contrast %>% plot
+  gx = im_crop( gx, rep( 1, 4 ) ) # gx %>% visualize_contrast %>% plot
+  if( starts.horizontal ){
+    # theta = atan2( gx, gy ) # The way this argument is given leads to an intuitive angle assignment
+    theta = atan2( gx, -gy ) # match to Redies
+  } else {
+    theta = atan2( gy, -gx )
+  }
+  magnitude = sqrt( gy^2 + gx^2 ) # magnitude %>% plot( rescale = TRUE )
+  return( list( theta = theta, magnitude = magnitude ) )
+}
+
+
+get_gradient_lab = function( im, starts.horizontal = TRUE ){
+  im2 = sRGB2Lab( im )
+  im2[,,1] = ( im2[,,1] / 100 ) %>% clamping
+  ablimit = 100
+  im2[,,2] = ( ( im2[,,2] + ablimit ) / ( 2 * ablimit ) ) %>% clamping()
+  im2[,,3] = ( ( im2[,,3] + ablimit ) / ( 2 * ablimit ) ) %>% clamping()
+  im3 = im2
+  for( y in 1:im_height( im2 ) ){
+    for( x in 1:im_width( im2 ) ){
+      im3[ y, x, 1 ] = ifelse( abs( im2[ y, x, 1 ] ) > abs( im2[ y, x, 2 ] ), im2[ y, x, 1 ], im2[ y, x, 2 ] )
+      im3[ y, x, 1 ] = ifelse( abs( im3[ y, x, 1 ] ) > abs( im2[ y, x, 3 ] ), im3[ y, x, 1 ], im2[ y, x, 3 ] )
+    }
+  }
+  im4 = nimg( im3[,,1] )
+  return( get_gradient( im4, starts.horizontal ) )
+}
+
+
+#' Calculate PHOG descriptor
+#' @param gradient gradient data
+#' @param n.bin number of orientation/direction bins
+#' @param is.orientation TRUE for orientation (0-180 degrees), FALSE for direction (0-360 degrees)
+#' @param starts.horizontal if TRUE, the first bin is centered at 0 degree
+#' @return a data frame
+get_hog = function( gradient, n.bin = 8, is.orientation = TRUE, starts.horizontal = TRUE ){
+  theta = gradient$theta
+  if( is.orientation ){
+    theta[ theta < 0 ] = theta[ theta < 0 ] + pi # direction to orientation # %>% plot( theta, rescale = T )
+    bin_width = pi / n.bin
+    theta_bin = ceiling( ( ( theta + bin_width / 2 ) %% pi ) / bin_width ) # plot(theta_bin, rescale = T)
+  } else {
+    theta = theta + pi # theta %>% plot( rescale = TRUE )
+    bin_width = 2 * pi / n.bin
+    theta_bin = ceiling( ( ( theta + bin_width / 2 ) %% ( 2 * pi ) ) / bin_width ) # plot(theta_bin, rescale = T)
+  }
+  # bin = theta_bin * magnitude # plot(bin, rescale = T)
+  hog = rep( 0, n.bin )
+  for( i in 1:n.bin ){
+    hog[ i ] = sum( gradient$magnitude[ theta_bin == i ] )
+  }
+  hog_normalized = hog
+  if( sum( hog ) != 0 ){
+    hog_normalized = hog / sum( hog )
+  }
+  margin = bin_width * 180 / pi / 2
+  if( starts.horizontal ){
+    angle = seq( from = 0, by = bin_width * 180 / pi, length.out = n.bin )
+    lower = round( angle - margin )
+    upper = round( angle + margin )
+    df = data.frame( lower = lower, upper = upper, angle = angle, value = hog_normalized, value_nn = hog )
+  } else {
+    angle = seq( from = 90, by = bin_width * 180 / pi, length.out = n.bin ) %% 180
+    lower = round( angle - margin )
+    upper = round( angle + margin )
+    df = data.frame(
+      lower = lower[ order( angle ) ], upper = upper[ order( angle ) ],
+      angle = angle[ order( angle ) ], value = hog_normalized[ order( angle ) ],
+      value_nn = hog[ order( angle ) ]
+    )
+  }
+  return( df )
+}
+
+
+#' Calculate PHOG descriptor
+#' @param gradient gradient data or input image
+#' @param level number of PHOG pyramid levels
+#' @param n.bin number of orientation/direction bins
+#' @param is.orientation TRUE for orientation (0-180 degrees), FALSE for direction (0-360 degrees)
+#' @param starts.horizontal if TRUE, the first bin is centered at 0 degree
+#' @return a data frame
+#' @examples
+#' df = PHOG_descriptor(regatta, level = 2)
+#' @export
+PHOG_descriptor = function( gradient, level = 3, n.bin = 8, is.orientation = TRUE, starts.horizontal = TRUE ){
+  if( is.nimg( gradient ) ){
+    gradient = get_gradient( get_L( gradient ), starts.horizontal )
+  }
+  g_theta = gradient$theta
+  g_magnitude = gradient$magnitude
+  # ground level
+  hog_global = get_hog( gradient, n.bin, is.orientation, starts.horizontal )
+  df = cbind( data.frame( level = 0, y = 1, x = 1 ), hog_global, data.frame( HI = NA ) )
+  if( level > 0 ){
+    # each level
+    height = im_height( g_theta )
+    width = im_width( g_theta )
+    for( l in 1:level ){
+      cellsize = c( height / 2^l, width / 2^l )
+      for( x in 1:2^l ){
+        for( y in 1:2^l ){
+          y1 = 1 + round( ( y - 1 ) * cellsize[ 1 ] )
+          x1 = 1 + round( ( x - 1 ) * cellsize[ 2 ] )
+          y2 = min( height, y1 + round( cellsize[ 1 ] ) - 1 )
+          x2 = min( width,  x1 + round( cellsize[ 2 ] ) - 1 )
+          theta = im_get( g_theta, y1, x1, y2, x2 )
+          magni = im_get( g_magnitude, y1, x1, y2, x2 )
+          hog = get_hog( list( theta = theta, magnitude = magni ), n.bin, is.orientation, starts.horizontal )
+          d = cbind( data.frame( level = l, y = y, x = x ), hog )
+          # Histgram intersection
+          HI = sum( pmin( hog_global$value, hog$value ) )
+          m1 = mean( hog_global$value_nn )
+          m2 = mean( hog$value_nn ) * 2^( 2 * l )
+          if( m1 < 0.00000001 || m2 < 0.00000001 ){
+            strength = 0
+          } else if( m1 > m2 ){
+            strength = m2 / m1
+          } else {
+            strength = m1 / m2
+          }
+          d$HI = HI * strength
+          df = rbind( df, d )
+        }
+      }
+    }
+  }
+  return( df )
+}
+
+
+#' Calculate PHOG features
+#' @param im an image
+#' @param level number of PHOG pyramid levels
+#' @param n.bin number of orientation/direction bins
+#' @param is.orientation TRUE for orientation (0-180 degrees), FALSE for direction (0-360 degrees)
+#' @param starts.horizontal if TRUE, the first bin is centered at 0 degree
+#' @param level.weight relative weights to each level for calculating self-similarity
+#' @return a data frame
+#' @examples
+#' PHOG_features(regatta)
+#' @export
+PHOG_features = function( im, level = 3, n.bin = 8, is.orientation = TRUE, starts.horizontal = TRUE,
+                          level.weight = c( 1, 1, 1 ) ){
+  # normalize weights
+  level.weight = level.weight[ 1:level ]
+  level.weight = level.weight / sum( level.weight )
+
+  G = get_gradient( get_L( im ), starts.horizontal )
+  phog = PHOG_descriptor( G, level, n.bin, is.orientation, starts.horizontal )
+
+  phog %>%
+    dplyr::filter( level > 0 ) %>%
+    dplyr::group_by( level, y, x ) %>%
+    dplyr::summarise( HI = mean( .data$HI ), .groups = "drop" ) %>%
+    dplyr::group_by( level ) %>%
+    dplyr::summarise( HI = median( .data$HI ), .groups = "drop" ) %>%
+    dplyr::mutate( weight = level.weight, HI2 = .data$HI * .data$weight ) -> df2
+  # plot( phog$value[ phog$level == 0 ], type = "h", ylim = c(0,1) )
+  # plot( phog$value[ phog$level == 1 ], type = "h", ylim = c(0,1) )
+  # plot( phog$value[ phog$level == 2 ], type = "h", ylim = c(0,1) )
+  data.frame(
+    self_similarity = sum( df2$HI2 ),
+    complexity = 100 * mean( G$magnitude ),
+    anisotropy = 100 * stats::sd( phog$value[ phog$level == level ] )
+  ) %>% return
 }
 
 
