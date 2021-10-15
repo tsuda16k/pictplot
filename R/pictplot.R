@@ -2135,12 +2135,13 @@ edge_canny = function( im, t1, t2, alpha = 1, sigma = 2, smoothing = 0 ){
 }
 
 
+# edge_DOG(im_gray(regatta), 0.5) %>% plot( rescale = T)
 edge_DOG = function( im, sigma, k = 1.6 ){
   im_conv( im, gauss_kernel( sigma ) ) - im_conv( im, gauss_kernel( k * sigma ) )
 }
 
 
-# XDOG(im_gray(face), 0.5) %>% ramp_threshold( 0.5, 6 ) %>% plot()
+# edge_XDOG(im_gray(regatta), 0.5) %>% ramp_threshold( 0.5, 6 ) %>% plot()
 edge_XDOG = function( im, sigma, k = 1.6, p = 20 ){
   ( 1 + p ) * im_conv( im, gauss_kernel(sigma) ) - p * im_conv( im, gauss_kernel(k * sigma) )
 }
@@ -2813,7 +2814,7 @@ fft_angular_mask = function( height, width, orientation = 0, angle = 0,
 #' @param linear.sample if TRUE,
 #' @param rawdata if TRUE, raw data is returned as well as slope value
 #' @param show.plot if TRUE, figure is displayed
-#' @return a data frame
+#' @return a numeric value or a data frame
 #' @examples
 #' fft_slope(regatta)
 #' fft_slope(regatta, rawdata = TRUE, show.plot = TRUE)
@@ -2909,6 +2910,256 @@ fft_transfer = function( from, to, element ){
     im = inv_fft( A * exp( 1i * P ) )  %>% clamping
   }
   return( im )
+}
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Complexity ----
+
+#' Edge density of an image
+#' @param im an image
+#' @param method edge detection method. either "diff", "sobel", "prewitt", or "canny".
+#' @return a numeric value
+#' @examples
+#' edge_density(regatta)
+#' @export
+edge_density = function( im, method = "sobel" ){
+  # img = im_gray( im )
+  img = get_L( im )
+  if( method == "diff" ){
+    edge = edge_diff( img )$magnitude
+  } else if( method == "sobel" ){
+    edge = edge_sobel( img )$magnitude
+  } else if( method == "prewitt" ){
+    edge = edge_prewitt( img )$magnitude
+  } else if( method == "canny" ){
+    edge = edge_canny( img )
+  }
+  return( mean( edge ) )
+}
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Fractal ----
+
+#' Calculate the fractal dimension of an image using the traditional 2D box counting method
+#' @param im an image
+#' @param n number of samples
+#' @param thr threshold for binarization. either numeric (e.g., 0.5), or "auto", or a string for quantiles (e.g., "15%")
+#' @param rawdata if TRUE, raw data is returned as well as slope value
+#' @return a numeric
+#' @examples
+#' Fractal2D(regatta)
+#' @export
+Fractal2D = function( im, n = 20, thr = "auto", rawdata = FALSE ){
+  im2 = im_threshold( im_crop_square( im ), thr, approx = TRUE, adjust = 1 ) %>% get_R
+
+  M = min( im_size( im2 ) )
+  S = ( logspace( 2, floor( M / 2 ), n ) )
+  # S = c( 2,4,8,16,32,64,128,256 )
+
+  Nr = rep( 0, length( S ) )
+  for( i in 1:length( S ) ){
+    s = S[ i ]
+    Ny = ceiling( im_height( im2 ) / s ) # number of box in y axis
+    Nx = ceiling( im_width( im2 ) / s )
+    if( i == length( S ) ){
+      Ny = 2
+      Nx = 2
+    }
+    nr = 0
+    for( y in 1:Ny ){
+      for( x in 1:Nx ){
+        yy = floor( 1 + ( y - 1 ) * s ):( min( round( y * s ), M ) )
+        xx = floor( 1 + ( x - 1 ) * s ):( min( round( x * s ), M ) )
+        if( any( im2[ yy, xx, 1 ] == 0 ) ){
+          nr = nr + 1
+        }
+      }
+    }
+    Nr[ i ] = nr
+  }
+
+  invR = M / S
+  df = data.frame( Log10_inverseR = log( invR ), Log10_Nr = log( Nr ) )
+  df = stats::na.omit( df )
+  df = df[is.finite(rowSums(df)),]
+  fit = stats::lm( Log10_Nr ~ Log10_inverseR, data = df )
+  slope = unname( fit$coefficients[ 2 ] )
+  df$slope = as.numeric( sprintf( "%1.3f", slope ) )
+
+  # fig = ggplot( df, aes_string( x = "Log10_inverseR", y = "Log10_Nr" ) ) +
+  #   geom_point() +
+  #   geom_smooth( method = "lm", formula = y ~ x, se = FALSE ) +
+  #   annotate( "text", x = 1.8, y = 7, label = sprintf("Slope = %1.3f", slope), size = 8 )
+  # plot( fig )
+
+  if( rawdata ){
+    return( df )
+  } else {
+    return( slope )
+  }
+}
+
+
+#' Calculate the fractal dimension of an image using 3D box counting methods
+#' @param im an image
+#' @param method either "DBC", "RDBC", or "IDBC"
+#' @param n number of samples
+#' @param rawdata if TRUE, raw data is returned as well as slope value
+#' @return a numeric value or a data frame
+#' @examples
+#' DBC(regatta)
+#' @export
+DBC = function( im, method = "DBC", n = 20, rawdata = FALSE ){
+  im = im_gray( im )
+  im = im_crop_square( im )
+  im = ceiling( im * 256 )
+
+  M = min( im_size( im ) )
+
+  if( method == "CDBC" ){
+    minpow = ceiling( log2( M^(1/3) ) )
+    bmin = 2^minpow;
+    bmax = bmin;
+    while( ( ceiling( M / bmax ) + 1 ) <= ceiling( M / ( bmax - 1 ) ) ){
+      bmax = bmax + 1;
+    }
+    boxes = seq( from = bmin, to = bmax, by = 2 )
+    S = boxes
+  } else {
+    # Smax = floor( M / 2 )
+    # N = c( 2^( 1:floor( log2( Smax ) ) ) )
+    # S = rev( floor( M / N ) )
+    # S = N
+    S = logspace( 2, floor( M / 2 ), n )
+  }
+
+  Nr = rep( 0, length( S ) )
+  for( i in 1:length( S ) ){
+    Nr[ i ] = FD_nr( im, S[ i ], method )
+  }
+
+  invR = M / S
+  df = data.frame( Log10_inverseR = log( invR ), Log10_Nr = log( Nr ) )
+  df = stats::na.omit( df )
+  df = df[is.finite(rowSums(df)),]
+  fit = stats::lm( Log10_Nr ~ Log10_inverseR, data = df )
+  slope = unname( fit$coefficients[ 2 ] )
+  df$slope = as.numeric( sprintf( "%1.3f", slope ) )
+
+  # fig = ggplot( df, aes_string( x = "Log10_inverseR", y = "Log10_Nr" ) ) +
+  #   geom_point() +
+  #   geom_smooth( method = "lm", formula = y ~ x, se = FALSE ) +
+  #   annotate( "text", x = 1.8, y = 7, label = sprintf("Slope = %1.3f", df$slope[1] ), size = 8 )
+  # plot( fig )
+
+  if( rawdata ){
+    return( df )
+  } else {
+    return( slope )
+  }
+}
+
+
+FD_nr = function( im, s, method ){
+  M = min( im_size( im ) )
+  r = s / M
+  Ny = ceiling( im_height( im ) / s )
+  Nx = ceiling( im_width( im ) / s )
+  if( abs( r - 0.5 ) < 0.0001 ){
+    Ny = 2
+    Nx = 2
+  }
+  G = 256
+  sprime = G * s / M
+
+  if( method == "Li2009" ){
+    a = 3
+    rprime = r / ( 1 + 2 * a * stats::sd( im ) )
+  }
+  Nr = 0
+  for( y in 1:Ny ){
+    for( x in 1:Nx ){
+      yy = floor( 1 + ( y - 1 ) * s ):( min( round( y * s ), M ) )
+      xx = floor( 1 + ( x - 1 ) * s ):( min( round( x * s ), M ) )
+      if( method == "DBC" ){
+        l = ceiling( max( im[ yy, xx, 1 ] ) / r / 256 ) %>% clamping( 1, min( Ny, Nx ) )
+        k = ceiling( min( im[ yy, xx, 1 ] ) / r / 256 ) %>% clamping( 1, min( Ny, Nx ) )
+        nr = l - k + 1
+      } else if( method == "RDBC" ){
+        dr = max( im[ yy, xx, 1 ] ) - min( im[ yy, xx, 1 ] )
+        nr = ifelse( dr == 0, 1, ceiling( dr / sprime ) )
+      } else if( method == "Li2009" ){
+        Imax = max( im[ yy, xx, 1 ] )
+        Imin = min( im[ yy, xx, 1 ] )
+        if( Imax == Imin ){
+          nr = 1
+        } else {
+          nr = ceiling( ( Imax - Imin ) / rprime )
+        }
+      } else if( method == "CDBC" ){
+        l = max( im[ yy, xx, 1 ] )
+        k = min( im[ yy, xx, 1 ] )
+        if( l == k ){
+          nr = 1
+        } else {
+          nr = ceiling( ( l - k ) / sprime )
+        }
+      } else if( method == "IDBC" ){
+        Imax = max( im[ yy, xx, 1 ] )
+        Imin = min( im[ yy, xx, 1 ] )
+        if( Imax == Imin ){
+          nr = 1
+        } else {
+          nr = ceiling( ( Imax - Imin + 1 ) / sprime )
+        }
+        nr_old = nr
+        # shift
+        dy = ifelse( y == Ny, -1, 1 )
+        dx = ifelse( x == Nx, -1, 1 )
+        yy = yy + dy
+        xx = xx + dx
+        Imax = max( im[ yy, xx, 1 ] )
+        Imin = min( im[ yy, xx, 1 ] )
+        if( Imax == Imin ){
+          nr = 1
+        } else {
+          nr = ceiling( ( Imax - Imin + 1 ) / sprime )
+        }
+        nr = max( nr, nr_old )
+      } else if( method == "IMDBC" ){
+        Imax = ceiling( max( im[ yy, xx, 1 ] ) / r / 256 )
+        Imin = ceiling( min( im[ yy, xx, 1 ] ) / r / 256 )
+        if( Imax == Imin ){
+          nr = ifelse( Imax == 0, 0, 1 )
+        } else {
+          h = r * ( Imax - Imin - 1 )
+          # h = ifelse( h == 0, 1, h )
+          nr = ceiling( ( Imax - Imin + 1 ) / h )
+        }
+        nr_old = nr
+        # shift
+        dy = ifelse( y == Ny, -1, 1 )
+        dx = ifelse( x == Nx, -1, 1 )
+        yy = yy + dy
+        xx = xx + dx
+        Imax = ceiling( max( im[ yy, xx, 1 ] ) / r / 256 )
+        Imin = ceiling( min( im[ yy, xx, 1 ] ) / r / 256 )
+        if( Imax == Imin ){
+          nr = ifelse( Imax == 0, 0, 1 )
+        } else {
+          h = r * ( Imax - Imin - 1 )
+          # h = ifelse( h == 0, 1, h )
+          nr = ceiling( ( Imax - Imin + 1 ) / h )
+        }
+        nr = max( nr, nr_old )
+      }
+      Nr = Nr + nr
+    }
+  }
+
+  return( Nr )
 }
 
 
@@ -3278,153 +3529,6 @@ Reinhard_multiple = function( im, ref, sRGB = TRUE ){
   out = LMS2RGB( lab2LMS( out ), sRGB )
   out = clamping( out )
   return( out )
-}
-
-
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# Fractal ----
-
-#' Calculate fractal dimension
-#' @param im an image
-#' @param method either "DBC", "RDBC", or "IDBC"
-#' @param n number of samples
-#' @return a numeric
-#' @examples
-#' DBC(regatta)
-#' @export
-DBC = function( im, method = "DBC", n = 20 ){
-  im = im_gray( im )
-  im = im_crop_square( im )
-  im = ceiling( im * 256 )
-
-  M = min( im_size( im ) )
-
-  if( method == "CDBC" ){
-    minpow = ceiling( log2( M^(1/3) ) )
-    bmin = 2^minpow;
-    bmax = bmin;
-    while( ( ceiling( M / bmax ) + 1 ) <= ceiling( M / ( bmax - 1 ) ) ){
-      bmax = bmax + 1;
-    }
-    boxes = seq( from = bmin, to = bmax, by = 2 )
-    S = boxes
-  } else {
-    Smax = floor( M / 2 )
-    N = c( 2^( 1:floor( log2( Smax ) ) ) )
-    S = rev( floor( M / N ) )
-    # S = N
-    S = ceiling( logspace( 2, floor( M / 2 ), n ) )
-  }
-
-  Nr = rep( 0, length( S ) )
-  for( i in 1:length( S ) ){
-    Nr[ i ] = FD_nr( im, S[ i ], method )
-  }
-
-  invR = M / S
-  df = data.frame( X = log( invR ), Y = log( Nr ) )
-  df = stats::na.omit( df )
-  df = df[is.finite(rowSums(df)),]
-  fit = stats::lm( Y ~ X, data = df )
-
-  return( unname( fit$coefficients[ 2 ] ) )
-}
-
-
-FD_nr = function( im, s, method ){
-  M = min( im_size( im ) )
-  r = s / M
-  Ny = ceiling( im_height( im ) / s )
-  Nx = ceiling( im_width( im ) / s )
-  G = 256
-  sprime = G * s / M
-
-  if( method == "Li2009" ){
-    a = 3
-    rprime = r / ( 1 + 2 * a * stats::sd( im ) )
-  }
-  Nr = 0
-  for( y in 1:Ny ){
-    for( x in 1:Nx ){
-      yy = ( 1 + ( y - 1 ) * s ):( min( y * s, M ) )
-      xx = ( 1 + ( x - 1 ) * s ):( min( x * s, M ) )
-      if( method == "DBC" ){
-        l = ceiling( max( im[ yy, xx, 1 ] ) / r / 256 ) %>% clamping( 1, min( Ny, Nx ) )
-        k = ceiling( min( im[ yy, xx, 1 ] ) / r / 256 ) %>% clamping( 1, min( Ny, Nx ) )
-        nr = l - k + 1
-      } else if( method == "RDBC" ){
-        dr = max( im[ yy, xx, 1 ] ) - min( im[ yy, xx, 1 ] )
-        nr = ifelse( dr == 0, 1, ceiling( dr / sprime ) )
-      } else if( method == "Li2009" ){
-        Imax = max( im[ yy, xx, 1 ] )
-        Imin = min( im[ yy, xx, 1 ] )
-        if( Imax == Imin ){
-          nr = 1
-        } else {
-          nr = ceiling( ( Imax - Imin ) / rprime )
-        }
-      } else if( method == "CDBC" ){
-        l = max( im[ yy, xx, 1 ] )
-        k = min( im[ yy, xx, 1 ] )
-        if( l == k ){
-          nr = 1
-        } else {
-          nr = ceiling( ( l - k ) / sprime )
-        }
-      } else if( method == "IDBC" ){
-        Imax = max( im[ yy, xx, 1 ] )
-        Imin = min( im[ yy, xx, 1 ] )
-        if( Imax == Imin ){
-          nr = 1
-        } else {
-          nr = ceiling( ( Imax - Imin + 1 ) / sprime )
-        }
-        nr_old = nr
-        # shift
-        dy = ifelse( y == Ny, -1, 1 )
-        dx = ifelse( x == Nx, -1, 1 )
-        yy = yy + dy
-        xx = xx + dx
-        Imax = max( im[ yy, xx, 1 ] )
-        Imin = min( im[ yy, xx, 1 ] )
-        if( Imax == Imin ){
-          nr = 1
-        } else {
-          nr = ceiling( ( Imax - Imin + 1 ) / sprime )
-        }
-        nr = max( nr, nr_old )
-      } else if( method == "IMDBC" ){
-        Imax = ceiling( max( im[ yy, xx, 1 ] ) / r / 256 )
-        Imin = ceiling( min( im[ yy, xx, 1 ] ) / r / 256 )
-        if( Imax == Imin ){
-          nr = ifelse( Imax == 0, 0, 1 )
-        } else {
-          h = r * ( Imax - Imin - 1 )
-          # h = ifelse( h == 0, 1, h )
-          nr = ceiling( ( Imax - Imin + 1 ) / h )
-        }
-        nr_old = nr
-        # shift
-        dy = ifelse( y == Ny, -1, 1 )
-        dx = ifelse( x == Nx, -1, 1 )
-        yy = yy + dy
-        xx = xx + dx
-        Imax = ceiling( max( im[ yy, xx, 1 ] ) / r / 256 )
-        Imin = ceiling( min( im[ yy, xx, 1 ] ) / r / 256 )
-        if( Imax == Imin ){
-          nr = ifelse( Imax == 0, 0, 1 )
-        } else {
-          h = r * ( Imax - Imin - 1 )
-          # h = ifelse( h == 0, 1, h )
-          nr = ceiling( ( Imax - Imin + 1 ) / h )
-        }
-        nr = max( nr, nr_old )
-      }
-      Nr = Nr + nr
-    }
-  }
-
-  return( Nr )
 }
 
 

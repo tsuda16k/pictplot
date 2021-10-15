@@ -2,9 +2,9 @@
 % Please edit documentation in R/pictplot.R
 \name{DBC}
 \alias{DBC}
-\title{Calculate fractal dimension}
+\title{Calculate the fractal dimension of an image using 3D box counting methods}
 \usage{
-DBC(im, method = "DBC", n = 20)
+DBC(im, method = "DBC", n = 20, rawdata = FALSE)
 }
 \arguments{
 \item{im}{an image}
@@ -12,12 +12,14 @@ DBC(im, method = "DBC", n = 20)
 \item{method}{either "DBC", "RDBC", or "IDBC"}
 
 \item{n}{number of samples}
+
+\item{rawdata}{if TRUE, raw data is returned as well as slope value}
 }
 \value{
-a numeric
+a numeric value or a data frame
 }
 \description{
-Calculate fractal dimension
+Calculate the fractal dimension of an image using 3D box counting methods
 }
 \examples{
 DBC(regatta)

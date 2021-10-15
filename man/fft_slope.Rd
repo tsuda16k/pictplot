@@ -30,7 +30,7 @@ fft_slope(
 \item{show.plot}{if TRUE, figure is displayed}
 }
 \value{
-a data frame
+a numeric value or a data frame
 }
 \description{
 Calculate orientation-averaged amplitude
