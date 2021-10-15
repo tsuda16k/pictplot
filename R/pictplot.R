@@ -1011,6 +1011,28 @@ im_distribute = function( im, channel, mean = NULL, sd = NULL, space = "CIELAB",
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# image creation ----
+
+#' Create a monotone image
+#' @param color single numeric for grayscale images, or three numeric values for RGB (color) images.
+#' @param height image height
+#' @param width image width
+#' @return an image
+#' @examples
+#' plot(im_mono(0.5, 128, 128)) # a gray square
+#' plot(im_mono(c(1, 0.2, 0.2), 64, 128)) # a red rectangle
+#' @export
+im_mono = function( color, height, width ){
+  nc = length( color )
+  if( ! nc %in% c( 1, 3 ) ){
+    stop( "color length must be 1 or 3." )
+  }
+  dat = array( rep( color, each = height * width, times = nc), c( height, width, nc ) )
+  return( nimg( dat ) )
+}
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # image info ----
 
 
@@ -1234,6 +1256,56 @@ merge_color = function( imlist ){
     im[,,i] = imlist[[ i ]]
   }
   return( nimg( im ) )
+}
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# alpha ----
+
+#' Remove a chennel(s) from an image
+#' @param im an image
+#' @param index channel index to be removed
+#' @return an image
+#' @examples
+#' plot(remove_channel(regatta, 1:2)) # remove 1st (R) and 2nd (G) channels
+#' @export
+remove_channel = function( im, index ){
+  im2 = split_color( im )
+  im2[ index ] = NULL
+  im3 = merge_color( im2 )
+  return( im3 )
+}
+
+
+#' Remove alpha channel from an image
+#' @param im an image
+#' @param index alpha channel index. 4 for RGB image, 2 for grayscale image.
+#' @return an image
+#' @export
+remove_alpha = function( im, index ){
+  if( missing( index ) ){
+    if( im_nc( im ) %in% c( 2, 4 ) ){
+      index = im_nc( im )
+    } else {
+      stop( "index must be specified." )
+    }
+  }
+  return( remove_channel( im, index ) )
+}
+
+
+#' Alpha blending of two images
+#' @param im an image (foreground)
+#' @param im2 an image (background)
+#' @param alpha an image (alpha channel). if missing, the alpha channel of im is used.
+#' @return an image
+#' @export
+im_blend = function( im, im2, alpha ){
+  if( missing( alpha ) ){
+    alpha = get_A( im ) # 0 = background, 1 = object
+  }
+  im3 = ( 1 - im_tricolored( alpha ) ) * im_tricolored( im2 ) + im_tricolored( alpha ) * im_tricolored( im )
+  return( im3 )
 }
 
 
