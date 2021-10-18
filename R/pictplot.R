@@ -343,12 +343,12 @@ as.data.frame.nimg = function( x, ..., is.wide = TRUE ){
   )
   if( is.wide ){
     df = tidyr::pivot_wider( df, names_from = "color", values_from = "value" )
-    if( nc == 1 ){
-      names( df ) = c( "y", "x", "value" )
-    } else {
-      names( df ) = c( "y", "x", "R", "G", "B", "A" )[ 1:( 2 + nc ) ]
-    }
-    if( nc >= 3 ){
+    names( df ) = c( "y", "x", "R", "G", "B", "A" )[ 1:( 2 + nc ) ]
+    if( nc == 1 || nc >= 3 ){
+      if( nc == 1 ){
+        df$G = df$R
+        df$B = df$R
+      }
       df$color = grDevices::rgb( df$R, df$G, df$B )
     }
   }
