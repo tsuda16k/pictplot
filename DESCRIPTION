@@ -22,6 +22,8 @@ Imports:
     imager,
     moments,
     ggplot2,
-    dplyr
+    dplyr,
+    grDevices,
+    tidyr
 Depends: 
     R (>= 2.10)

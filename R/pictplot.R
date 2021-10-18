@@ -317,6 +317,45 @@ nimg2cimg = function( im ){
 }
 
 
+#' nimg to data frame conversion
+#' @param x an image
+#' @param ... S3 generic/method consistency
+#' @param is.wide either TRUE for wide format or FALSE for long format
+#' @return a data frame
+#' @export
+as.data.frame.nimg = function( x, ..., is.wide = TRUE ){
+  im = x
+  ny = im_height( im )
+  nx = im_width( im )
+  nc = im_nc( im )
+  if( length( dim( im ) ) == 2 ){ # (y, x) to (x, y)
+    dat = t( im )
+  } else if( length( dim( im ) ) == 4 ){ # (y, x, cc, z) to (x, y, z, cc)
+    dat = aperm( im, c( 2, 1, 4, 3 ) )
+  } else if( length( dim( im ) ) == 3 ){ # (y, x, cc) to (x, y, cc)
+    dat = aperm( im, c( 2, 1, 3 ) )
+  }
+  df = data.frame(
+    y = rep( 1:ny, each = nx, times = 1 * nc ),
+    x = rep( 1:nx, each = 1, times = ny * nc ),
+    color = rep( 1:nc, each = ny * nx, times = 1 ),
+    value = as.numeric( dat )
+  )
+  if( is.wide ){
+    df = tidyr::pivot_wider( df, names_from = "color", values_from = "value" )
+    if( nc == 1 ){
+      names( df ) = c( "y", "x", "value" )
+    } else {
+      names( df ) = c( "y", "x", "R", "G", "B", "A" )[ 1:( 2 + nc ) ]
+    }
+    if( nc >= 3 ){
+      df$color = grDevices::rgb( df$R, df$G, df$B )
+    }
+  }
+  return( df )
+}
+
+
 resetPar = function() {
   p = list(
     xlog = FALSE, ylog = FALSE, adj = 0.5, ann = TRUE, ask = FALSE, bg = "white", bty = "o",
@@ -1032,6 +1071,19 @@ im_mono = function( color, height, width ){
 }
 
 
+#' Create a white noise image
+#' @param height image height
+#' @param width image width
+#' @param n.channel number of color channel. either 1 (gras scale noise) or 3 (color noise)
+#' @return an image
+#' @examples
+#' plot(im_noise(128, 128))
+#' @export
+im_noise = function( height, width, n.channel = 3 ){
+  nimg( array( runif( height * width * n.channel ), c( height, width, n.channel ) ) )
+}
+
+
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # image info ----
 
@@ -1576,6 +1628,41 @@ im_flip = function( im, direction = "horizontal" ){
     return( im )
   } else if( direction == "vertical" ){
     im[ im_height( im ):1, , ] = im
+    return( im )
+  } else {
+    return( NULL )
+  }
+}
+
+
+#' Flip an image
+#' @param im an image
+#' @param direction Either "horizontal" (default) or "vertical".
+#' @param position where to flip the image
+#' @return an image
+#' @export
+im_flip_position = function( im, direction = "horizontal", position ){
+  if( direction == "horizontal" ){
+    if( missing( position ) ){
+      im[ , im_width( im ):1, ] = im
+    } else {
+      center = ( im_width( im ) %/% 2 ) + 1
+      lag = center - position
+      im = im_shift( im, "x", lag )
+      im[ , im_width( im ):1, ] = im
+      im = im_shift( im, "x", -lag )
+    }
+    return( im )
+  } else if( direction == "vertical" ){
+    if( missing( position ) ){
+      im[ im_height( im ):1, , ] = im
+    } else {
+      center = ( im_height( im ) %/% 2 ) + 1
+      lag = center - position
+      im = im_shift( im, "y", lag )
+      im[ im_height( im ):1, , ] = im
+      im = im_shift( im, "y", -lag )
+    }
     return( im )
   } else {
     return( NULL )
