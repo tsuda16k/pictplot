@@ -1311,8 +1311,32 @@ merge_color = function( imlist ){
 }
 
 
+#' Pile two images
+#' @param im an image
+#' @param im2 an image
+#' @return an image
+#' @examples
+#' plot(im_pile(regatta, im_gray(regatta)))
+#' @export
+im_pile = function( im, im2 ){
+  img = nimg( array( 0, c( im_height( im ), im_width( im ), im_nchannel( im ) + im_nchannel( im2 ) ) ) )
+  img[, , 1:im_nchannel( im ) ] = im
+  img[, , ( 1 + im_nchannel( im ) ):im_nchannel( img ) ] = im2
+  return( img )
+}
+
+
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # alpha ----
+
+#' Extract the alpha channel from an image
+#' @param im an image
+#' @return an image
+#' @export
+get_alpha = function( im ){
+  return( get_channel( im, 4 ) )
+}
+
 
 #' Remove a chennel(s) from an image
 #' @param im an image
@@ -1358,6 +1382,83 @@ im_blend = function( im, im2, alpha ){
   }
   im3 = ( 1 - im_tricolored( alpha ) ) * im_tricolored( im2 ) + im_tricolored( alpha ) * im_tricolored( im )
   return( im3 )
+}
+
+
+#' Add a fading border to an image
+#' @param im an image
+#' @param npix thickness of the fading border
+#' @param blur_radius apply a blur of this radius to the fading border to avoid illusory edges at the image corners
+#' @return an image
+#' @examples
+#' plot(fade_border(regatta, npix = 30))
+#' @export
+fade_border = function( im, npix, blur_radius = 6 ){
+  im_ = im
+
+  margin = 1
+  npix = max( blur_radius / 2, npix)
+  blur_radius = min( npix - margin * 2, blur_radius )
+  shade = seq( from = 0, to = 1, length.out = npix + 2 - ( max( margin, blur_radius - margin ) ) ) %>%
+    cubic_spline
+  # append some margin zeros to the outer side of the shade spline to avoid faint outer borders to appear
+  shade = c( rep( 0, max( margin, blur_radius - margin ) ), shade )
+  # remove the beginning (0) and the end (1) of the spline
+  shade = shade[ 2:( length(shade) - 1 ) ]
+
+  im = nimg(array(1,c(im_height(im), im_width(im),1))) %>% nimg2cimg
+  im[ c(1, imager::width(im)), , 1, 1]  = 0
+  im[ , c(1, imager::height(im)), 1, 1] = 0
+  mask = im
+  im[ c(1, imager::width(im)), , 1, 1]  = shade[ 1 ]
+  im[ , c(1, imager::height(im)), 1, 1] = shade[ 1 ]
+  for( i in 2:npix ){
+    mask = imager::shrink( mask, 3 )
+    im[ im == 1 & !mask ] = shade[ i ]
+  }
+  alpha = cimg2nimg( im ) %>% get_R %>% box_blur( blur_radius ) %>% clamping
+  out = im_pile( im_, alpha )
+  return( out )
+}
+# fade_border(regatta %>% im_resize( 240 ), 20, 0) %>% plot() #%>% im_save( "im_fade", getwd() )
+
+
+#' Add a fading border to an image region
+#' @param im an image
+#' @param mask an image
+#' @param npix thickness of the fading border
+#' @param blur_radius apply a blur of this radius to the fading border to avoid illusory edges at the image corners
+#' @return an image
+#' @examples
+#' im = regatta
+#' mask = im_mono(0, im_height(im), im_width(im))
+#' mask[ 100:350, 100:500,] = 1
+#' plot(fade_mask(im, mask, 20))
+#' @export
+fade_mask = function( im, mask, npix, blur_radius = 3 ){
+  im_ = im_tricolored( im )
+  mask = get_R( mask )
+  mask[ mask < 1 ] = 0
+
+  margin = 1
+  npix = max( blur_radius / 2, npix)
+  blur_radius = min( npix - margin * 2, blur_radius )
+  shade = seq( from = 0, to = 1, length.out = npix + 2 - ( max( margin, blur_radius - margin ) ) ) %>%
+    cubic_spline
+  # append some margin zeros to the outer side of the shade spline to avoid faint outer borders to appear
+  shade = c( rep( 0, max( margin, blur_radius - margin ) ), shade )
+  # remove the beginning (0) and the end (1) of the spline
+  shade = shade[ 2:( length(shade) - 1 ) ]
+
+  im = mask %>% nimg2cimg
+  im2 = mask %>% nimg2cimg
+  for( i in 1:npix ){
+    im2 = imager::shrink( im2, 3 )
+    im[ im == 1 & !im2 ] = shade[ i ]
+  }
+  alpha = cimg2nimg( im ) %>% get_R %>% box_blur( blur_radius ) %>% clamping
+  out = im_pile( im_, alpha )
+  return( out )
 }
 
 
@@ -2243,7 +2344,7 @@ edge_XDOG = function( im, sigma, k = 1.6, p = 20 ){
 #' @export
 box_blur = function( im, radius ){
   if( radius < 1 ){
-    warning( "radius should be equal to or larger than 1.")
+    #warning( "radius should be equal to or larger than 1.")
     return( im )
   }
   r = radius
