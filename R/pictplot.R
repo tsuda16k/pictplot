@@ -3357,21 +3357,25 @@ FD_nr = function( im, s, method ){
 #' Get a gradient image
 #' @param im an image
 #' @param starts.horizontal axis direction
+#' @param clockwise direction of rotation
 #' @return a list of images
 #' #' @examples
 #' G = get_gradient(regatta)
 #' plot(G$theta)
 #' plot(G$magnitude)
 #' @export
-get_gradient = function( im, starts.horizontal = TRUE ){
+get_gradient = function( im, starts.horizontal = TRUE, clockwise = TRUE ){
   im2 = im_pad( im, n = 1, method = "mirror" )
   gy = im_shift( im2, axis = "y", lag = -1 ) - im_shift( im2, axis = "y", lag = 1 )
   gx = im_shift( im2, axis = "x", lag = -1 ) - im_shift( im2, axis = "x", lag = 1 )
   gy = im_crop( gy, rep( 1, 4 ) ) # gy %>% visualize_contrast %>% plot
   gx = im_crop( gx, rep( 1, 4 ) ) # gx %>% visualize_contrast %>% plot
   if( starts.horizontal ){
-    # theta = atan2( gx, gy ) # The way this argument is given leads to an intuitive angle assignment
-    theta = atan2( gx, -gy ) # match to Redies
+    if( clockwise ){
+      theta = atan2( gx, gy ) # The way this argument is given leads to an intuitive angle assignment
+    } else {
+      theta = atan2( gx, -gy ) # match to Redies
+    }
   } else {
     theta = atan2( gy, -gx )
   }
@@ -3380,13 +3384,14 @@ get_gradient = function( im, starts.horizontal = TRUE ){
 }
 
 
-get_gradient_lab = function( im, starts.horizontal = TRUE ){
+get_gradient_lab = function( im, starts.horizontal = TRUE, clockwise = TRUE ){
   im2 = sRGB2Lab( im )
   im2[,,1] = ( im2[,,1] / 100 ) %>% clamping
   ablimit = 100
   im2[,,2] = ( ( im2[,,2] + ablimit ) / ( 2 * ablimit ) ) %>% clamping()
   im2[,,3] = ( ( im2[,,3] + ablimit ) / ( 2 * ablimit ) ) %>% clamping()
   im3 = im2
+  # get the max value across channels
   for( y in 1:im_height( im2 ) ){
     for( x in 1:im_width( im2 ) ){
       im3[ y, x, 1 ] = ifelse( abs( im2[ y, x, 1 ] ) > abs( im2[ y, x, 2 ] ), im2[ y, x, 1 ], im2[ y, x, 2 ] )
@@ -3394,7 +3399,7 @@ get_gradient_lab = function( im, starts.horizontal = TRUE ){
     }
   }
   im4 = nimg( im3[,,1] )
-  return( get_gradient( im4, starts.horizontal ) )
+  return( get_gradient( im4, starts.horizontal, clockwise ) )
 }
 
 
@@ -3450,13 +3455,14 @@ get_hog = function( gradient, n.bin = 8, is.orientation = TRUE, starts.horizonta
 #' @param n.bin number of orientation/direction bins
 #' @param is.orientation TRUE for orientation (0-180 degrees), FALSE for direction (0-360 degrees)
 #' @param starts.horizontal if TRUE, the first bin is centered at 0 degree
+#' @param clockwise direction of rotation
 #' @return a data frame
 #' @examples
 #' df = PHOG_descriptor(regatta, level = 2)
 #' @export
-PHOG_descriptor = function( gradient, level = 3, n.bin = 8, is.orientation = TRUE, starts.horizontal = TRUE ){
+PHOG_descriptor = function( gradient, level = 3, n.bin = 8, is.orientation = TRUE, starts.horizontal = TRUE, clockwise = FALSE ){
   if( is.nimg( gradient ) ){
-    gradient = get_gradient( get_L( gradient ), starts.horizontal )
+    gradient = get_gradient( get_L( gradient ), starts.horizontal, clockwise )
   }
   g_theta = gradient$theta
   g_magnitude = gradient$magnitude
@@ -3506,19 +3512,20 @@ PHOG_descriptor = function( gradient, level = 3, n.bin = 8, is.orientation = TRU
 #' @param n.bin number of orientation/direction bins
 #' @param is.orientation TRUE for orientation (0-180 degrees), FALSE for direction (0-360 degrees)
 #' @param starts.horizontal if TRUE, the first bin is centered at 0 degree
+#' @param clockwise direction of rotation
 #' @param level.weight relative weights to each level for calculating self-similarity
 #' @return a data frame
 #' @examples
 #' PHOG_features(regatta)
 #' @export
-PHOG_features = function( im, level = 3, n.bin = 8, is.orientation = TRUE, starts.horizontal = TRUE,
+PHOG_features = function( im, level = 3, n.bin = 8, is.orientation = TRUE, starts.horizontal = TRUE, clockwise = FALSE,
                           level.weight = c( 1, 1, 1 ) ){
   # normalize weights
   level.weight = level.weight[ 1:level ]
   level.weight = level.weight / sum( level.weight )
 
-  G = get_gradient( get_L( im ), starts.horizontal )
-  phog = PHOG_descriptor( G, level, n.bin, is.orientation, starts.horizontal )
+  G = get_gradient( get_L( im ), starts.horizontal, clockwise )
+  phog = PHOG_descriptor( G, level, n.bin, is.orientation, starts.horizontal, clockwise )
 
   phog %>%
     dplyr::filter( level > 0 ) %>%

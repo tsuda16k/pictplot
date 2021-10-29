@@ -4,12 +4,14 @@
 \alias{get_gradient}
 \title{Get a gradient image}
 \usage{
-get_gradient(im, starts.horizontal = TRUE)
+get_gradient(im, starts.horizontal = TRUE, clockwise = TRUE)
 }
 \arguments{
 \item{im}{an image}
 
 \item{starts.horizontal}{axis direction}
+
+\item{clockwise}{direction of rotation}
 }
 \value{
 a list of images

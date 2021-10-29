@@ -10,6 +10,7 @@ PHOG_features(
   n.bin = 8,
   is.orientation = TRUE,
   starts.horizontal = TRUE,
+  clockwise = FALSE,
   level.weight = c(1, 1, 1)
 )
 }
@@ -23,6 +24,8 @@ PHOG_features(
 \item{is.orientation}{TRUE for orientation (0-180 degrees), FALSE for direction (0-360 degrees)}
 
 \item{starts.horizontal}{if TRUE, the first bin is centered at 0 degree}
+
+\item{clockwise}{direction of rotation}
 
 \item{level.weight}{relative weights to each level for calculating self-similarity}
 }

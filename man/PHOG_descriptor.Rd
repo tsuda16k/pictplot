@@ -9,7 +9,8 @@ PHOG_descriptor(
   level = 3,
   n.bin = 8,
   is.orientation = TRUE,
-  starts.horizontal = TRUE
+  starts.horizontal = TRUE,
+  clockwise = FALSE
 )
 }
 \arguments{
@@ -22,6 +23,8 @@ PHOG_descriptor(
 \item{is.orientation}{TRUE for orientation (0-180 degrees), FALSE for direction (0-360 degrees)}
 
 \item{starts.horizontal}{if TRUE, the first bin is centered at 0 degree}
+
+\item{clockwise}{direction of rotation}
 }
 \value{
 a data frame
