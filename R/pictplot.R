@@ -378,7 +378,7 @@ resetPar = function() {
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# data structure ----
+# Data structure ----
 
 
 matrix2list = function( x ){
@@ -402,7 +402,7 @@ colorder = function( df, name ){
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# color space ----
+# Color space ----
 
 
 #' sRGB to linear RGB conversion
@@ -686,7 +686,7 @@ YUV2sRGB = function( im,  use.B601 = FALSE ){
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# math ----
+# Math ----
 
 
 #' Rescale numeric vector to have a range between 0 to 1
@@ -851,7 +851,7 @@ logspace = function( from, to, length.out ){
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# geometry ----
+# Geometry ----
 
 
 #' Find the circle passing through three points
@@ -916,141 +916,7 @@ is_inside_ellipse = function( x, y, h, k, a, b ){
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# stats ----
-
-
-#' Mean squared error between two images
-#' @param im1 an image
-#' @param im2 an image
-#' @return mean squared error
-#' @examples
-#' im_diff(regatta, regatta^2)
-#' @export
-im_diff = function( im1, im2 ){
-  if( imager::is.cimg( im1 ) ){
-    im1 = cimg2nimg( im1 )
-  }
-  if( imager::is.cimg( im2 ) ){
-    im2 = cimg2nimg( im2 )
-  }
-  return( mean( ( im1 - im2 )^2 ) )
-}
-
-
-#' Get moment statistics of a vector/array
-#' @param x data
-#' @param order order of the moment to be computed
-#' @param na.rm logical. Should missing values be removed?
-#' @return a numeric vector
-#' @examples
-#' get_moments( rnorm( 20 ) ) # get the 1st to 4th order moments
-#' get_moments( rnorm( 20 ), order = 3 ) # get only the 3rd order moment (skewness)
-#' get_moments( rnorm( 20 ), order = c( 3, 1 ) ) # get skewness (3rd moment) and mean (1st moment)
-#' @export
-get_moments = function( x, order = 1:4, na.rm = FALSE ){
-  m = rep( 0.0, times = length( order ) )
-  names( m ) = c( "mean", "sd", "skewness", "kurtosis" )[ order ]
-  for( i in 1:length( order ) ){
-    if( order[ i ] == 1 ){
-      m[ i ] = base::mean( x, na.rm = na.rm )
-    } else if( order[ i ] == 2 ){
-      m[ i ] = stats::sd( x, na.rm = na.rm )
-    } else if( order[ i ] == 3 ){
-      m[ i ] = moments::skewness( x, na.rm = na.rm )
-    } else if( order[ i ] == 4 ){
-      m[ i ] = moments::kurtosis( x, na.rm = na.rm )
-    }
-  }
-  return( m )
-}
-
-
-#' Get moment statistics of an image
-#' @param im an image
-#' @param channel color channel
-#' @param order order of the moment to be computed
-#' @param space color space, either "CIELAB" (default) or "RGB"
-#' @param max_size resize input image before calculation of moments
-#' @param na.rm logical. Should missing values be removed?
-#' @return a data frame of moment values
-#' @examples
-#' im_moments(regatta) # moments in CIELAB color space
-#' im_moments(regatta, space = "RGB") # moments of RGB channels
-#' im_moments(regatta, channel = 1) # L channel of CIELAB color space
-#' im_moments(regatta, channel = "L") # same as above
-#' im_moments(regatta, channel = 1, space = "RGB") # R channel of the input image
-#' im_moments(regatta, channel = 2:3, order = c(2, 3)) # sd and skew in a and b channels
-#' im_moments(regatta, channel = c("a", "b"), order = c(2, 3)) # same as above
-#' @export
-im_moments = function( im, channel = 1:3, order = 1:4, space = "CIELAB", max_size = 1024, na.rm = FALSE ){
-  if( im_nc( im ) == 1 ){
-    channel = 1
-  }
-  df = data.frame()
-  im = im_resize_limit( im, max_size )
-  if( space == "CIELAB" ){
-    if( im_nc( im ) > 2 ){
-      im = sRGB2Lab( im )
-    }
-    clabel = c( "L", "a", "b" )
-  } else {
-    clabel = c( "R", "G", "B", "A" )
-  }
-  channel = force_channel_label_to_num( channel )
-  for( i in 1:length( channel ) ){
-    mmt = get_moments( get_channel( im, channel[ i ] ), order, na.rm = na.rm )
-    df = rbind( df, data.frame(
-      channel = clabel[ channel[ i ] ], moment = names( mmt ), value = unname( mmt ) ) )
-  }
-  return( df )
-}
-
-
-#' Shift and scale the distribution of pixel values
-#' @param im an image
-#' @param channel color channel
-#' @param mean center of distribution. when not given, the mean of that channel is used.
-#' @param sd dispersion of distribution. when not given, the sd of that channel is used.
-#' @param space color space
-#' @param clamp either TRUE (default, output pixel value is clamped to range 0-1) or FALSE
-#' @return an image
-#' @examples
-#' im_moments(regatta) # before manipulation
-#' im_moments(im_distribute(regatta, "b", mean = 0, sd = 20)) # b channel is adjusted
-#' plot(im_distribute(regatta, "b", mean = 0, sd = 20)) # see the effect
-#' plot(im_distribute(regatta, c("a", "b"), c(-5, 0), c(15, 20))) # adjust two channels simultaneously
-#' @export
-im_distribute = function( im, channel, mean = NULL, sd = NULL, space = "CIELAB", clamp = TRUE ){
-  channel = force_channel_label_to_num( channel )
-  if( space == "CIELAB" && im_nc( im ) > 2 ){
-    im = sRGB2Lab( im )
-  }
-  for( i in 1:length( channel ) ){
-    if( is.null( mean[ i ] ) || is.na( mean[ i ] ) ){
-      M = base::mean( get_channel( im, channel[ i ] ) )
-    } else {
-      M = mean[ i ]
-    }
-    if( is.null( sd[ i ] ) || is.na( sd[ i ] ) ){
-      S = stats::sd( get_channel( im, channel[ i ] ) )
-    } else {
-      S = sd[ i ]
-    }
-    I = im[ , , channel[ i ], drop = F ]
-    im[ , , channel[ i ] ] = S * ( ( I - base::mean( I ) ) / stats::sd( I ) ) + M
-  }
-  if( space == "CIELAB" && im_nc( im ) > 2 ){
-    im = Lab2sRGB( im )
-  }
-  if( clamp ){
-    im = clamping( im )
-  }
-  return( im )
-}
-
-
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# image creation ----
+# Image creation ----
 
 #' Create a monotone image
 #' @param color single numeric for grayscale images, or three numeric values for RGB (color) images.
@@ -1085,7 +951,7 @@ im_noise = function( height, width, n.channel = 3 ){
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# image info ----
+# Image info ----
 
 
 #' Get image height
@@ -1200,7 +1066,7 @@ im_coord = function( im, direction = "x" ){
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# image slicing ----
+# Image slicing ----
 
 
 force_channel_label_to_num = function( x ){
@@ -1327,7 +1193,7 @@ im_pile = function( im, im2 ){
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# alpha ----
+# Alpha ----
 
 #' Extract the alpha channel from an image
 #' @param im an image
@@ -1463,7 +1329,7 @@ fade_mask = function( im, mask, npix, blur_radius = 3 ){
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# image transform ----
+# Image transform ----
 
 
 #' Reverse pixel values
@@ -2101,8 +1967,29 @@ im_glitch = function( im ){
 }
 
 
+#' Add an oval mask to an image
+#' @param im an image
+#' @param color  Color of the margin area
+#' @examples
+#' plot(apply_oval_mask(regatta, 0.5))
+#' plot(apply_oval_mask(regatta, c(1,1,0.2)))
+#' @export
+apply_oval_mask = function( im, color = 0.5 ){
+  h = im_height( im )
+  w = im_width( im )
+  mask = get_oval_mask( h, w, h / 2, w / 2, h / 2, w / 2 )
+  mask = im_rep( mask, n = 3 )
+  im = im_tricolored( im )
+  if( length( color ) == 1 ){
+    color = rep( color, 3 )
+  }
+  im[ mask == 0 ] = im_mono( color, h, w )[ mask == 0 ]
+  return( im )
+}
+
+
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# luminance ----
+# Luminance ----
 
 
 #' Convert to grayscale
@@ -2196,7 +2083,7 @@ get_oval_mask = function( height, width, cy, cx, ry, rx ){
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# spatial filtering ----
+# Spatial filtering ----
 
 
 #' Edge detection by finite differences
@@ -2676,6 +2563,23 @@ filter_v1 = function( im, id, n_orientation = 4, cell_type = "complex" ){
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # FFT ----
 
+#' Blur an image
+#' @param im an image
+#' @param cutoff cutoff frequency
+#' @param method either "gauss", "ideal", or "butterworth"
+#' @param order order of butterworth filter
+#' @examples
+#' plot(im_blur(regatta, 20))
+#' @export
+im_blur = function( im, cutoff, method = "gauss", order = 4 ){
+  n = round( min( im_size( im ) ) / 10 )
+  im = im_pad( im, n = n, method = "mirror" )
+  im2 = fft_filter( im, xpass = "lowpass", kernel = method, cutoff = cutoff, order = order )
+  im2 = im_crop( im2, n )
+  im2 = clamping( im2 )
+  return( im2 )
+}
+
 
 #' Shift fft image
 #' @param im an image
@@ -3098,6 +3002,191 @@ fft_transfer = function( from, to, element ){
     im = inv_fft( A * exp( 1i * P ) )  %>% clamping
   }
   return( im )
+}
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Image statistics ----
+
+#' Mean squared error between two images
+#' @param im1 an image
+#' @param im2 an image
+#' @return mean squared error
+#' @examples
+#' im_diff(regatta, regatta^2)
+#' @export
+im_diff = function( im1, im2 ){
+  if( imager::is.cimg( im1 ) ){
+    im1 = cimg2nimg( im1 )
+  }
+  if( imager::is.cimg( im2 ) ){
+    im2 = cimg2nimg( im2 )
+  }
+  return( mean( ( im1 - im2 )^2 ) )
+}
+
+
+#' Get moment statistics of a vector/array
+#' @param x data
+#' @param order order of the moment to be computed
+#' @param na.rm logical. Should missing values be removed?
+#' @return a numeric vector
+#' @examples
+#' get_moments( rnorm( 20 ) ) # get the 1st to 4th order moments
+#' get_moments( rnorm( 20 ), order = 3 ) # get only the 3rd order moment (skewness)
+#' get_moments( rnorm( 20 ), order = c( 3, 1 ) ) # get skewness (3rd moment) and mean (1st moment)
+#' @export
+get_moments = function( x, order = 1:4, na.rm = FALSE ){
+  m = rep( 0.0, times = length( order ) )
+  names( m ) = c( "mean", "sd", "skewness", "kurtosis" )[ order ]
+  for( i in 1:length( order ) ){
+    if( order[ i ] == 1 ){
+      m[ i ] = base::mean( x, na.rm = na.rm )
+    } else if( order[ i ] == 2 ){
+      m[ i ] = stats::sd( x, na.rm = na.rm )
+    } else if( order[ i ] == 3 ){
+      m[ i ] = moments::skewness( x, na.rm = na.rm )
+    } else if( order[ i ] == 4 ){
+      m[ i ] = moments::kurtosis( x, na.rm = na.rm )
+    }
+  }
+  return( m )
+}
+
+
+#' Get moment statistics of an image
+#' @param im an image
+#' @param channel color channel
+#' @param order order of the moment to be computed
+#' @param space color space, either "CIELAB" (default) or "RGB"
+#' @param max_size resize input image before calculation of moments
+#' @param na.rm logical. Should missing values be removed?
+#' @return a data frame of moment values
+#' @examples
+#' im_moments(regatta) # moments in CIELAB color space
+#' im_moments(regatta, space = "RGB") # moments of RGB channels
+#' im_moments(regatta, channel = 1) # L channel of CIELAB color space
+#' im_moments(regatta, channel = "L") # same as above
+#' im_moments(regatta, channel = 1, space = "RGB") # R channel of the input image
+#' im_moments(regatta, channel = 2:3, order = c(2, 3)) # sd and skew in a and b channels
+#' im_moments(regatta, channel = c("a", "b"), order = c(2, 3)) # same as above
+#' @export
+im_moments = function( im, channel = 1:3, order = 1:4, space = "CIELAB", max_size = 1024, na.rm = FALSE ){
+  if( im_nc( im ) == 1 ){
+    channel = 1
+  }
+  df = data.frame()
+  im = im_resize_limit( im, max_size )
+  if( space == "CIELAB" ){
+    if( im_nc( im ) > 2 ){
+      im = sRGB2Lab( im )
+    }
+    clabel = c( "L", "a", "b" )
+  } else {
+    clabel = c( "R", "G", "B", "A" )
+  }
+  channel = force_channel_label_to_num( channel )
+  for( i in 1:length( channel ) ){
+    mmt = get_moments( get_channel( im, channel[ i ] ), order, na.rm = na.rm )
+    df = rbind( df, data.frame(
+      channel = clabel[ channel[ i ] ], moment = names( mmt ), value = unname( mmt ) ) )
+  }
+  return( df )
+}
+
+
+#' Shift and scale the distribution of pixel values
+#' @param im an image
+#' @param channel color channel
+#' @param mean center of distribution. when not given, the mean of that channel is used.
+#' @param sd dispersion of distribution. when not given, the sd of that channel is used.
+#' @param space color space
+#' @param clamp either TRUE (default, output pixel value is clamped to range 0-1) or FALSE
+#' @return an image
+#' @examples
+#' im_moments(regatta) # before manipulation
+#' im_moments(im_distribute(regatta, "b", mean = 0, sd = 20)) # b channel is adjusted
+#' plot(im_distribute(regatta, "b", mean = 0, sd = 20)) # see the effect
+#' plot(im_distribute(regatta, c("a", "b"), c(-5, 0), c(15, 20))) # adjust two channels simultaneously
+#' @export
+im_distribute = function( im, channel, mean = NULL, sd = NULL, space = "CIELAB", clamp = TRUE ){
+  channel = force_channel_label_to_num( channel )
+  if( space == "CIELAB" && im_nc( im ) > 2 ){
+    im = sRGB2Lab( im )
+  }
+  for( i in 1:length( channel ) ){
+    if( is.null( mean[ i ] ) || is.na( mean[ i ] ) ){
+      M = base::mean( get_channel( im, channel[ i ] ) )
+    } else {
+      M = mean[ i ]
+    }
+    if( is.null( sd[ i ] ) || is.na( sd[ i ] ) ){
+      S = stats::sd( get_channel( im, channel[ i ] ) )
+    } else {
+      S = sd[ i ]
+    }
+    I = im[ , , channel[ i ], drop = F ]
+    im[ , , channel[ i ] ] = S * ( ( I - base::mean( I ) ) / stats::sd( I ) ) + M
+  }
+  if( space == "CIELAB" && im_nc( im ) > 2 ){
+    im = Lab2sRGB( im )
+  }
+  if( clamp ){
+    im = clamping( im )
+  }
+  return( im )
+}
+
+
+#' Analyze edge distribution
+#' @param im an image
+#' @param bin.width bin width in degree
+#' @param is.orientation TRUE for orientation, FALSE for direction
+#' @examples
+#' df = angle_distribution(regatta)
+#' plot(df$Angle, df$Magnitude, type = "h")
+#' @export
+angle_distribution = function( im, bin.width = 3, is.orientation = TRUE ){
+  G = get_gradient( get_L( im ), starts.horizontal = T )
+  angle = round( ( as.vector( G$theta ) + pi ) * 180 / pi ) %>% clamping( 0, 360 )
+  angle[ angle == 360 ] = 0
+  angle = bin.width * ( angle %/% bin.width )
+  if( is.orientation ){
+    angle[ angle >= 180 ] = angle[ angle >= 180 ] - 180
+  }
+
+  df = data.frame( Angle = angle, magnitude = as.vector( G$magnitude ) ) %>%
+    dplyr::group_by( .data$Angle ) %>%
+    dplyr::summarise( Magnitude = sum( .data$magnitude ) ) %>%
+    dplyr::mutate( Normalized = .data$Magnitude / sum( .data$Magnitude ) )
+  return( df )
+
+  # im = regatta
+  # bin.width = 3
+  # is.orientation = TRUE
+  #
+  # df = angle_distribution( im, bin.width, is.orientation )
+  #
+  # fig = ggplot( df, aes( x = Angle, y = Normalized ) ) +
+  #   geom_bar( stat = "identity", width = bin.width ) +
+  #   scale_x_continuous( limits = c( -bin.width / 2, ifelse( is.orientation, 180, 360 ) ), breaks = 0:120 * 30 )
+  #
+  # ggplot( as.data.frame( im ), aes( x, y ) ) +
+  #   geom_raster( aes( fill = color ) ) +
+  #   scale_fill_identity() +
+  #   coord_fixed() +
+  #   scale_y_continuous( trans = "reverse", expand = c( 0, 0 ) ) +
+  #   scale_x_continuous( expand = c( 0, 0 ) ) +
+  #   theme(
+  #     axis.title = element_blank(),
+  #     axis.text = element_blank(),
+  #     axis.ticks = element_blank(),
+  #     axis.line = element_blank(),
+  #     plot.margin= unit(c(0, 0, 0, 0), "lines")
+  #   ) -> fig_im
+  #
+  # fig = patchwork::wrap_plots( list( fig_im, fig ), nrow = 1 )
+  # plot( fig )
 }
 
 
@@ -3562,7 +3651,7 @@ color_dodge = function( bottom, top = bottom ){
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# visualization ----
+# Visualization ----
 
 
 #' Visualize CIELAB image
@@ -3601,7 +3690,7 @@ visualize_contrast = function( im, abs.range = NULL, Lcenter = 55 ){
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# color transfer ----
+# Color transfer ----
 
 
 RGB2LMS = function( im, sRGB = TRUE ){
