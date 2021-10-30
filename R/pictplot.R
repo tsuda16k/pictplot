@@ -3159,7 +3159,7 @@ angle_distribution = function( im, bin.width = 3, is.orientation = TRUE ){
     dplyr::group_by( .data$Angle ) %>%
     dplyr::summarise( Magnitude = sum( .data$magnitude ) ) %>%
     dplyr::mutate( Normalized = .data$Magnitude / sum( .data$Magnitude ) )
-  return( df )
+  return( as.data.frame(df) )
 
   # im = regatta
   # bin.width = 3
@@ -3186,6 +3186,192 @@ angle_distribution = function( im, bin.width = 3, is.orientation = TRUE ){
   #   ) -> fig_im
   #
   # fig = patchwork::wrap_plots( list( fig_im, fig ), nrow = 1 )
+  # plot( fig )
+}
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Composition ----
+
+#' Analyze image symmetry
+#' @param im an image
+#' @param method either "luminance", "edge", or "both"
+#' @param direction either "horizontal", "vertical", or "both"
+#' @param sample.rate a numeric between 0 and 1
+#' @param lowpass.cutoff cutoff frequency for lowpass filtering
+#' @param rawdata if FALSE, summary data is returned. if TRUE, rawdata is also returned
+#' @examples
+#' im = im_resize( regatta, 128 )
+#' df = im_symmetry(im)
+#' @export
+im_symmetry = function( im, method = "both", direction = "both", sample.rate = 0.25, lowpass.cutoff, rawdata = FALSE ){
+  #
+  if( method == "both" ){
+    if( direction == "both" ){
+      df = rbind(
+        im_symmetry( im, "luminance", "horizontal", sample.rate, lowpass.cutoff, rawdata = TRUE ),
+        im_symmetry( im, "luminance", "vertical", sample.rate, lowpass.cutoff, rawdata = TRUE ),
+        im_symmetry( im, "edge", "horizontal", sample.rate, lowpass.cutoff, rawdata = TRUE ),
+        im_symmetry( im, "edge", "vertical", sample.rate, lowpass.cutoff, rawdata = TRUE )
+      )
+    } else {
+      df = rbind(
+        im_symmetry( im, "luminance", direction, sample.rate, lowpass.cutoff, rawdata = TRUE ),
+        im_symmetry( im, "edge", direction, sample.rate, lowpass.cutoff, rawdata = TRUE )
+      )
+    }
+    # mutate combined measure
+    df2 = df %>%
+      dplyr::group_by( .data$direction, .data$position ) %>%
+      dplyr::summarise( pearson_r = mean( .data$pearson_r ), .groups = "drop" ) %>%
+      dplyr::group_by( .data$direction ) %>%
+      dplyr::mutate( peak = .data$position[ which.max( .data$pearson_r ) ] )
+    df2 = cbind( data.frame( method = "combined" ), df2 )
+    raw = rbind( df, df2 )
+    #
+    smr = raw %>%
+      dplyr::group_by( .data$method, .data$direction ) %>%
+      dplyr::summarise( r = max( .data$pearson_r ), position = mean( .data$peak ), .groups = "drop" )
+    if( rawdata ){
+      return( list( summary = as.data.frame(smr), rawdata = as.data.frame(raw) ) )
+    } else {
+      return( as.data.frame( smr ) )
+    }
+  } else if( direction == "both" ){
+    raw = rbind(
+      im_symmetry( im, method, "horizontal", sample.rate, lowpass.cutoff, rawdata = TRUE ),
+      im_symmetry( im, method, "vertical", sample.rate, lowpass.cutoff, rawdata = TRUE )
+    )
+    smr = raw %>%
+      dplyr::group_by( .data$method, .data$direction ) %>%
+      dplyr::summarise( r = max( .data$pearson_r ), position = mean( .data$peak ), .groups = "drop" )
+    if( rawdata ){
+      return( list( summary = as.data.frame(smr), rawdata = as.data.frame(raw) ) )
+    } else {
+      return( as.data.frame(smr) )
+    }
+  }
+
+  if( missing( lowpass.cutoff ) ){
+    if( method == "luminance" ){
+      lowpass.cutoff = 4
+    } else if( method == "edge" ){
+      lowpass.cutoff = 10
+    }
+  }
+
+  # extend the image before filtering to avoid the filtering artifact at image borders
+  if( lowpass.cutoff > 0 ){
+    margin = ifelse( lowpass.cutoff > 10, 10, round( 100 / lowpass.cutoff ) )
+    im %>%
+      im_pad( margin, method = "mirror" ) %>%
+      fft_filter( "lowpass", "gauss", lowpass.cutoff ) %>%
+      im_crop( margin ) -> im
+  }
+
+  if( method == "luminance" ){
+    im = get_L( im ) %>% clamping
+  } else if( method == "edge" ){
+    im = get_L( im )
+    im = edge_sobel( im )$magnitude
+  }
+
+  M = ifelse( direction == "horizontal", im_width( im ), im_height( im ) )
+  n.sample = round( sample.rate * M )
+  index = seq( from = 2, to = M - 1, length.out = n.sample ) %>% ceiling %>% clamping( 2, M - 1 )
+  r = rep( 0, length( index ) )
+  npix = im_npix( im )
+  for( i in 1:length( index ) ){
+    bin_half_width = min( ( index[ i ] - 1 ), abs( index[ i ] - M ) )
+    if( direction == "horizontal" ){
+      im1 = im[ , (index[i] - bin_half_width):(index[i]-1), ] %>% as.numeric
+      im2 = im[ , (index[i]+1):(index[i] + bin_half_width), ,drop = FALSE ] %>%
+        nimg %>% im_flip( direction ) %>% as.numeric
+    } else {
+      im1 = im[ (index[i] - bin_half_width):(index[i]-1),, ] %>% as.numeric
+      im2 = im[ (index[i]+1):(index[i] + bin_half_width),,,drop = FALSE ] %>%
+        nimg %>% im_flip( direction ) %>% as.numeric
+    }
+    if( stats::sd( im1 ) == 0 || stats::sd( im2 ) == 0 ){
+      r[ i ] = NA
+    } else {
+      weight = 2 * length( im1 ) / npix
+      r[ i ] = stats::cor( im1, im2 ) * weight
+    }
+  }
+  df = data.frame( method = method, direction = direction, position = index, pearson_r = r )
+  df$peak = df$position[ which.max( df$pearson_r ) ]
+
+  return( df )
+
+  # im = regatta
+  # im = im_resize( im, 128 )
+  # df = symmetry( im, method = c( "luminance", "edge", "both" )[ 1 ], direction = "both", sample.rate = 0.25, rawdata = T )
+  #
+  # # image
+  # ggplot( as.data.frame( im ), aes( x, y ) ) +
+  #   geom_raster( aes( fill = color ) ) +
+  #   scale_fill_identity() +
+  #   coord_fixed() +
+  #   scale_y_continuous( trans = "reverse", expand = c( 0, 0 ) ) +
+  #   scale_x_continuous( expand = c( 0, 0 ) ) +
+  #   theme_cowplot( 14 ) +
+  #   theme(
+  #     axis.title = element_blank()
+  #   ) -> fig_im
+  #
+  # df = df$rawdata
+  # # horizontal
+  # ggplot( df %>% subset( direction == "horizontal"),
+  #         aes( x = position, y = pearson_r, group = method, colour = method, size = method ) ) +
+  #   geom_hline( yintercept = 0, size = 0.6, color = "gray20" ) +
+  #   geom_line() +
+  #   # geom_point() +
+  #   geom_vline( xintercept = df$position[ which.max( df$pearson_r[ df$method == "combined"  & df$direction == "horizontal" ] ) ],
+  #               color = "gray30",  size = 1.5 ) +
+  #   geom_vline( xintercept = df$position[ which.max( df$pearson_r[ df$method == "edge"      & df$direction == "horizontal" ] ) ],
+  #               color = "#FA6A6E", size = 0.8 ) +
+  #   geom_vline( xintercept = df$position[ which.max( df$pearson_r[ df$method == "luminance" & df$direction == "horizontal" ] ) ],
+  #               color = "#82B9C7", size = 0.8 ) +
+  #   scale_color_manual( values = c( "gray30", "#FA6A6E", "#82B9C7" ) ) +
+  #   scale_size_manual( values = c( 1.5, 1, 1 ) ) +
+  #   scale_x_continuous( expand = c( 0, 0 ) ) +
+  #   scale_y_continuous( limits = c( -1, 1 ), breaks = -4:4 * 0.5, expand = c( 0, 0 ) ) +
+  #   theme_cowplot( 15 ) +
+  #   theme(
+  #     legend.position = "none",
+  #     aspect.ratio = .5,
+  #     panel.grid.major.y = element_line(colour = "gray80" )
+  #   ) -> fig_h
+  #
+  # # vertical
+  # ggplot( df %>% subset( direction == "vertical"),
+  #         aes( x = position, y = pearson_r, group = method, colour = method, size = method ) ) +
+  #   geom_hline( yintercept = 0, size = 0.6, color = "gray20" ) +
+  #   geom_line() +
+  #   # geom_point() +
+  #   geom_vline( xintercept = df$position[ which.max( df$pearson_r[ df$method == "combined"  & df$direction == "vertical" ] ) ],
+  #               color = "gray30",  size = 1.5 ) +
+  #   geom_vline( xintercept = df$position[ which.max( df$pearson_r[ df$method == "edge"      & df$direction == "vertical" ] ) ],
+  #               color = "#FA6A6E", size = 0.8 ) +
+  #   geom_vline( xintercept = df$position[ which.max( df$pearson_r[ df$method == "luminance" & df$direction == "vertical" ] ) ],
+  #               color = "#82B9C7", size = 0.8 ) +
+  #   scale_color_manual( values = c( "gray30", "#FA6A6E", "#82B9C7" ) ) +
+  #   scale_size_manual( values = c( 1.5, 1, 1 ) ) +
+  #   scale_x_reverse( expand = c( 0, 0 ) ) +
+  #   scale_y_continuous( limits = c( -1, 1 ), breaks = -4:4 * 0.5, expand = c( 0, 0 ) ) +
+  #   theme_cowplot( 15 ) +
+  #   coord_flip() +
+  #   theme(
+  #     # legend.position = "none",
+  #     legend.position = c( 0.1, 1.4 ),
+  #     aspect.ratio = 2 + 2 * ( im_height( im ) - im_width( im ) ) / im_width( im ), #2.5,
+  #     panel.grid.major.x = element_line(colour = "gray80" )
+  #   ) -> fig_v
+  #
+  # # plot
+  # spacer = ggplot() + coord_fixed() + theme_void()
+  # fig = patchwork::wrap_plots( list( fig_h, spacer, fig_im, fig_v ), nrow = 2 )
   # plot( fig )
 }
 
