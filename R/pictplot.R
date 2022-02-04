@@ -3191,6 +3191,11 @@ angle_distribution = function( im, bin.width = 3, is.orientation = TRUE ){
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Circular Statistics ----
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Composition ----
 
 #' Analyze image symmetry
@@ -3583,6 +3588,8 @@ FD_nr = function( im, s, method ){
         dx = ifelse( x == Nx, -1, 1 )
         yy = yy + dy
         xx = xx + dx
+        yy = yy[ yy <= im_height(im) ]
+        xx = xx[ xx <= im_width(im) ]
         Imax = max( im[ yy, xx, 1 ] )
         Imin = min( im[ yy, xx, 1 ] )
         if( Imax == Imin ){
@@ -3750,6 +3757,7 @@ PHOG_descriptor = function( gradient, level = 3, n.bin = 8, is.orientation = TRU
     width = im_width( g_theta )
     for( l in 1:level ){
       cellsize = c( height / 2^l, width / 2^l )
+      # each block
       for( x in 1:2^l ){
         for( y in 1:2^l ){
           y1 = 1 + round( ( y - 1 ) * cellsize[ 1 ] )
