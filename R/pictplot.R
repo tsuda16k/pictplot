@@ -3191,8 +3191,55 @@ angle_distribution = function( im, bin.width = 3, is.orientation = TRUE ){
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# Circular Statistics ----
+# Color Statistics ----
 
+#' Circular color statistics
+#' @param im an image
+#' @examples
+#' df = circular_color_stat(regatta)
+#' @export
+circular_color_stat = function( im ){
+  # RGB to IHLS
+  R = as.vector( get_R( im ) )
+  G = as.vector( get_G( im ) )
+  B = as.vector( get_B( im ) )
+  M = matrix( c( 0.2125, 0.7154, 0.0721, 1, -1/2, -1/2, 0, -sqrt(3)/2, sqrt(3)/2 ), ncol = 3, byrow = T )
+  M %*% c( R[1], G[1], B[1] )
+  X = M %*% matrix( c( R, G, B ), nrow = 3, byrow = T )
+  Y  = X[1, ]
+  C1 = X[2, ]
+  C2 = X[3, ]
+  C = sqrt( C1^2 + C2^2 )
+  H = rep( NA, length( C ) )
+  H[ C == 0 ] = NA
+  H[ C != 0 & C2 <= 0 ] = acos( C1[ C != 0 & C2 <= 0 ] / C[ C != 0 & C2 <= 0 ] )
+  H[ C != 0 & C2 >  0 ] = 2 * pi - acos( C1[ C != 0 & C2 > 0 ] / C[ C != 0 & C2 > 0 ] ) # C2 > 0 is equivalent to B > G
+  Hs = H %% ( pi / 3 )
+  S = 2 * C * sin( pi * 2 / 3 - Hs ) / sqrt( 3 )
+
+  # un-weighted
+  A = sum( cos( H ), na.rm = TRUE )
+  B = sum( sin( H ), na.rm = TRUE )
+  Hue = atan2( B, A )
+  R = sqrt( A^2 + B^2 )
+  n = sum( !is.na( H ) )
+  MeanLength = R / n
+  Variance = 1 - MeanLength
+
+  # weighted
+  As = sum( S[ ! is.na( S ) ] * cos( H[ ! is.na( H ) ] ) )
+  Bs = sum( S[ ! is.na( S ) ] * sin( H[ ! is.na( H ) ] ) )
+  w_Hue = atan2( Bs, As )
+  w_MeanLength_1 = sqrt( As^2 + Bs^2 ) / sum( S[ ! is.na( S ) ] )
+  w_MeanLength_2 = sqrt( As^2 + Bs^2 ) / n
+  w_Variance_1 = 1 - w_MeanLength_1
+  w_Variance_2 = 1 - w_MeanLength_2
+
+  df = data.frame(
+    Hue, Variance, w_Hue, w_Variance_1, w_Variance_2
+  )
+  return( df )
+}
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
