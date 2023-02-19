@@ -24,6 +24,6 @@ an image
 Create a circular mask image
 }
 \examples{
-mask = get_circular_mask( 100, 200, 50, 50, 20 )
+mask = get_circular_mask( 100, 120, 50, 50, 20 )
 plot(mask)
 }

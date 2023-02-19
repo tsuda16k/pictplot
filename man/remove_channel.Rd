@@ -2,7 +2,7 @@
 % Please edit documentation in R/pictplot.R
 \name{remove_channel}
 \alias{remove_channel}
-\title{Remove a chennel(s) from an image}
+\title{Remove a channel(s) from an image}
 \usage{
 remove_channel(im, index)
 }
@@ -15,7 +15,7 @@ remove_channel(im, index)
 an image
 }
 \description{
-Remove a chennel(s) from an image
+Remove a channel(s) from an image
 }
 \examples{
 plot(remove_channel(regatta, 1:2)) # remove 1st (R) and 2nd (G) channels

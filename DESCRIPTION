@@ -24,6 +24,7 @@ Imports:
     ggplot2,
     dplyr,
     grDevices,
-    tidyr
+    tidyr,
+    meanShiftR
 Depends: 
     R (>= 2.10)

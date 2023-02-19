@@ -850,6 +850,24 @@ logspace = function( from, to, length.out ){
 }
 
 
+#' Round floats to integers while preserving their sum
+#' ref. https://stackoverflow.com/questions/32544646/round-vector-of-numerics-to-integer-while-preserving-their-sum
+#' @param x a numeric vector
+#' @param digits integer indicating the number of decimal places (round) to be used.
+#' @return a numeric vector
+#' @examples
+#' smart.round(seq(1,1.5,0.05), 1)
+#' @export
+smart.round = function(x, digits = 1) {
+  up = 10 ^ digits
+  x = x * up
+  y = floor(x)
+  indices = utils::tail(order(x-y), round(sum(x)) - sum(y))
+  y[indices] = y[indices] + 1
+  y / up
+}
+
+
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Geometry ----
 
@@ -984,6 +1002,17 @@ im_width = function( im ){
 #' @export
 im_size = function( im ){
   unname( dim( im )[ 1:2 ] )
+}
+
+
+#' Get the diagonal length of an image
+#' @param im an image
+#' @return image's diagonal length
+#' @examples
+#' im_diagonal(regatta)
+#' @export
+im_diagonal = function( im ){
+  sqrt( im_height( im )^2 + im_width( im )^2 )
 }
 
 
@@ -1204,7 +1233,7 @@ get_alpha = function( im ){
 }
 
 
-#' Remove a chennel(s) from an image
+#' Remove a channel(s) from an image
 #' @param im an image
 #' @param index channel index to be removed
 #' @return an image
@@ -1988,6 +2017,18 @@ apply_oval_mask = function( im, color = 0.5 ){
 }
 
 
+#' Convert an image to a numeric vector
+#' Pixel values of R channel comes first, and then G, and finally B.
+#' Each channel is serialized vertically (column-wise).
+#' @param im an image
+#' @examples
+#' x = im_serialize(regatta)
+#' @export
+im_serialize = function( im ){
+  return( c( array( get_R(im) ), array( get_G(im) ), array( get_B(im) ) ) )
+}
+
+
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Luminance ----
 
@@ -2040,6 +2081,36 @@ get_L = function( im, scale = TRUE ){
 # Masking ----
 
 
+#' Create an arc mask image
+#' @param height image height
+#' @param width image width
+#' @param cy arc center y
+#' @param cx arc center x
+#' @param r arc radius
+#' @param t1 angle (start) in radius
+#' @param t2 angle (end) in radius
+#' @return an image
+#' @examples
+#' mask = get_arc_mask( 100, 120, 50, 50, 20, pi/6, pi )
+#' plot(mask)
+#' @export
+get_arc_mask = function( height, width, cy, cx, r, t1, t2){
+  maskD = matrix( 0, nrow = height, ncol = width )
+  u = matrix( 1:width - cx, ncol = width, nrow = height, byrow = T )
+  v = matrix( 1:height - cy, ncol = width, nrow = height, byrow = F )
+  D = sqrt( u^2 + v^2 )
+  maskD[ D <= r ] = 1
+
+  maskA = matrix( 0, nrow = height, ncol = width )
+  A = -atan2( v, u )
+  A[ A < 0 ] = A[ A < 0 ] + 2 * pi
+  maskA[ A >= min(t1,t2) & A <= max(t1,t2) ] = 1
+
+  maskA[ maskD == 0 ] = 0
+  return( nimg( maskA ) )
+}
+
+
 #' Create a circular mask image
 #' @param height image height
 #' @param width image width
@@ -2048,7 +2119,7 @@ get_L = function( im, scale = TRUE ){
 #' @param r circle radius
 #' @return an image
 #' @examples
-#' mask = get_circular_mask( 100, 200, 50, 50, 20 )
+#' mask = get_circular_mask( 100, 120, 50, 50, 20 )
 #' plot(mask)
 #' @export
 get_circular_mask = function( height, width, cy, cx, r ){
@@ -2079,6 +2150,54 @@ get_oval_mask = function( height, width, cy, cx, ry, rx ){
   xx = im_coord( im, "x" )
   D = ( xx - cx )^2 / rx^2 + ( yy - cy )^2 / ry^2 <= 1
   return( nimg( D ) )
+}
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Painting ----
+
+#' Draw a circle to an image
+#' @param im an image
+#' @param cy circle center x
+#' @param cx circle center y
+#' @param r circle radius
+#' @param color circle color
+#' @return an image
+#' @examples
+#' im = paint_circle(regatta, 100, 200, 20, c(1, 0.2, 0.2))
+#' plot(im)
+#' @export
+paint_circle = function(im, cy, cx, r, color){
+  mask = get_circular_mask( im_height(im), im_width(im), cy, cx, r)
+  mask = im_tricolored( mask )
+  im[mask == 1] = rep( color, each = sum( mask ) / 3 )
+  return( im )
+}
+
+
+#' Draw an arc to an image
+#' @param im an image
+#' @param cy arc center x
+#' @param cx arc center y
+#' @param r arc radius
+#' @param w arc width
+#' @param t1 angle (start) in radius
+#' @param t2 angle (end) in radius
+#' @param color circle color
+#' @return an image
+#' @examples
+#' im = paint_arc(regatta, 200, 300, 100, 10, 0, pi, c(1, 0.2, 0.2))
+#' plot(im)
+#' @export
+paint_arc = function(im, cy, cx, r, w, t1, t2, color){
+  outer = get_circular_mask( im_height(im), im_width(im), cy, cx, r)
+  inner = get_circular_mask( im_height(im), im_width(im), cy, cx, r - w)
+  arc = get_arc_mask( im_height(im), im_width(im), cy, cx, r, t1, t2)
+  outer[inner == 1] = 0
+  outer[arc==0] = 0
+  mask = im_tricolored( nimg( outer ) )
+  im[ mask == 1 ] = rep( color, each = sum( mask ) / 3 )
+  return(im)
 }
 
 
@@ -3242,6 +3361,108 @@ circular_color_stat = function( im ){
 }
 
 
+#' Extract the color palette of an image
+#' This function performs color palette extraction of an image using the mean shift algorithm.
+#' It uses the meanShift function in the meanShiftR package.
+#' @param im an image
+#' @param bandwidth This value is used in the kernel density estimate for color classification.
+#' The smaller the value of this parameter, the more colors are extracted.
+#' @param bound Input image is resized before color classification.
+#' The input image will be reduced in size, with the shorter side equal to this value.
+#' @param iterations The number of iterations to perform mean shift classification.
+#' @examples
+#' palette_extract(regatta)
+#' @export
+palette_extract = function( im, bandwidth = 0.03, bound = 40, iterations = 1000 ){
+  im = im_resize_limit_min( im, bound )
+  im2 = array( im_serialize( im ), c( im_width(im) * im_height(im), 3 ) )
+  ms = meanShiftR::meanShift(
+    im2, im2, bandwidth = rep( bandwidth, 3), iterations = iterations
+  )
+
+  col = unique( ms$value )
+  col = sprintf( "%0.4f", col ) %>% as.numeric %>% matrix( ncol = 3 )
+  df = data.frame( col )
+  names( df ) = c( "R", "G", "B" )
+  df$n = table( ms$assignment )
+  df$percent = smart.round( df$n/sum(df$n), digits = 3 ) * 100
+  df = df[ order( df$n, decreasing = TRUE ), ]
+  rownames( df ) = NULL
+  return( df )
+}
+
+
+#' Visualize the color palette of an image
+#' @param im an image
+#' @param palette color palette
+#' @param type either "bar" or "circle
+#' @param threshold minor colors below this threshold is not displayed
+#' @param monospace either TRUE or FALSE. If FALSE, If FALSE, the length of the color chart is
+#' proportional to the percentage of occurrences of that color in the image.
+#' @param width width of color chart. A numeric value between 0 and 1.
+#' @param size output image resolution. Only works for the circle type. The default is 1024.
+#' @examples
+#' palette = palette_extract(regatta)
+#' im = palette_visualize(regatta, palette, "bar")
+#' plot(im)
+#' im2 = palette_visualize(regatta, palette, "circle")
+#' plot(im2)
+#' @export
+palette_visualize = function( im, palette, type = "bar", threshold = 1, monospace = FALSE, width, size ){
+  pal = palette
+  pal = palette[palette$percent >= threshold, ]
+  pal$percent = smart.round( pal$n/sum(pal$n), digits = 3 ) * 100
+  if( monospace ){
+    pal$percent = rep( 1/nrow(pal), nrow(pal) )
+    pal$percent = smart.round( pal$percent, digits = 3 ) * 100
+  }
+  if( missing( width ) ){
+    color_bar_width = 0.15
+  } else {
+    color_bar_width = width
+  }
+  if( missing( size ) ){
+    size = 1024
+  }
+
+  if( type == "circle" ){
+    cy = cx = r = floor( size / 2 )
+    t1_ = t2_ = 0
+    out = nimg(array(1,c(size,size,3)))
+    for( i in 1:nrow(pal) ){
+      col = c( pal$R[i], pal$G[i], pal$B[i] )
+      t1 = t2_
+      t2 = t1 + pal$percent[ i ] * 2 * pi / 100
+      out = paint_arc( out, cy, cx, r, size * color_bar_width/2, t1, t2, col)
+      t1_ = t1
+      t2_ = t2
+    }
+    if( color_bar_width < 1 ){
+      diagonal = 2 * ( size / 2 - color_bar_width/2 * size )
+      im2 = im_resize_scale( im, scale = diagonal / im_diagonal( im ) )
+      out = im_combine( out, im2, y = (size - im_height(im2))/2, x = (size - im_width(im2))/2 )
+    }
+    return(out)
+  } else if( type == "bar" ){
+    width = im_width( im )
+    bar = im_mono( c(0,0,0), round( im_height( im ) * color_bar_width ), width )
+    w = cumsum( pal$percent ) / 100
+    w = c( 1, round( width * w )[ -nrow( pal ) ] + 1 )
+    for( i in 1:nrow( pal ) ){
+      if( w[ i ] > width ){
+        break
+      }
+      bar[, w[ i ]:width, 1] = pal$R[ i ]
+      bar[, w[ i ]:width, 2] = pal$G[ i ]
+      bar[, w[ i ]:width, 3] = pal$B[ i ]
+    }
+    bar[1:4,,] = c(1,1,1)
+    out = im_combine( im, bar, y = im_height( im ) )
+    return(out)
+  }
+}
+
+
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Composition ----
 
@@ -3358,7 +3579,7 @@ im_symmetry = function( im, method = "both", direction = "both", sample.rate = 0
 
   # im = regatta
   # im = im_resize( im, 128 )
-  # df = symmetry( im, method = c( "luminance", "edge", "both" )[ 1 ], direction = "both", sample.rate = 0.25, rawdata = T )
+  # df = im_symmetry( im, method = c( "luminance", "edge", "both" )[ 1 ], direction = "both", sample.rate = 0.25, rawdata = T )
   #
   # # image
   # ggplot( as.data.frame( im ), aes( x, y ) ) +
@@ -3367,7 +3588,7 @@ im_symmetry = function( im, method = "both", direction = "both", sample.rate = 0
   #   coord_fixed() +
   #   scale_y_continuous( trans = "reverse", expand = c( 0, 0 ) ) +
   #   scale_x_continuous( expand = c( 0, 0 ) ) +
-  #   theme_cowplot( 14 ) +
+  #   cowplot::theme_cowplot( 14 ) +
   #   theme(
   #     axis.title = element_blank()
   #   ) -> fig_im
@@ -3389,7 +3610,7 @@ im_symmetry = function( im, method = "both", direction = "both", sample.rate = 0
   #   scale_size_manual( values = c( 1.5, 1, 1 ) ) +
   #   scale_x_continuous( expand = c( 0, 0 ) ) +
   #   scale_y_continuous( limits = c( -1, 1 ), breaks = -4:4 * 0.5, expand = c( 0, 0 ) ) +
-  #   theme_cowplot( 15 ) +
+  #   cowplot::theme_cowplot( 15 ) +
   #   theme(
   #     legend.position = "none",
   #     aspect.ratio = .5,
@@ -3412,7 +3633,7 @@ im_symmetry = function( im, method = "both", direction = "both", sample.rate = 0
   #   scale_size_manual( values = c( 1.5, 1, 1 ) ) +
   #   scale_x_reverse( expand = c( 0, 0 ) ) +
   #   scale_y_continuous( limits = c( -1, 1 ), breaks = -4:4 * 0.5, expand = c( 0, 0 ) ) +
-  #   theme_cowplot( 15 ) +
+  #   cowplot::theme_cowplot( 15 ) +
   #   coord_flip() +
   #   theme(
   #     # legend.position = "none",
