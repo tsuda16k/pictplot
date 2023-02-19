@@ -11,7 +11,10 @@ palette_visualize(
   threshold = 1,
   monospace = FALSE,
   width,
-  size
+  size,
+  outline_width = 0,
+  outline_color = c(0.5, 0.5, 0.5),
+  margin = 0
 )
 }
 \arguments{
@@ -29,6 +32,13 @@ proportional to the percentage of occurrences of that color in the image.}
 \item{width}{width of color chart. A numeric value between 0 and 1.}
 
 \item{size}{output image resolution. Only works for the circle type. The default is 1024.}
+
+\item{outline_width}{outline width of color chart. The default is 0 (no outline).}
+
+\item{outline_color}{outline color.}
+
+\item{margin}{margin between picture and color chart. Only works for the bar type.
+A numeric value between 0 and 1. The default is 0.}
 }
 \description{
 Visualize the color palette of an image

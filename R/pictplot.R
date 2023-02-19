@@ -3401,6 +3401,10 @@ palette_extract = function( im, bandwidth = 0.03, bound = 40, iterations = 1000 
 #' proportional to the percentage of occurrences of that color in the image.
 #' @param width width of color chart. A numeric value between 0 and 1.
 #' @param size output image resolution. Only works for the circle type. The default is 1024.
+#' @param outline_width outline width of color chart. The default is 0 (no outline).
+#' @param outline_color outline color.
+#' @param margin margin between picture and color chart. Only works for the bar type.
+#' A numeric value between 0 and 1. The default is 0.
 #' @examples
 #' palette = palette_extract(regatta)
 #' im = palette_visualize(regatta, palette, "bar")
@@ -3408,7 +3412,8 @@ palette_extract = function( im, bandwidth = 0.03, bound = 40, iterations = 1000 
 #' im2 = palette_visualize(regatta, palette, "circle")
 #' plot(im2)
 #' @export
-palette_visualize = function( im, palette, type = "bar", threshold = 1, monospace = FALSE, width, size ){
+palette_visualize = function( im, palette, type = "bar", threshold = 1, monospace = FALSE, width, size,
+                              outline_width = 0, outline_color = c(0.5,0.5,0.5), margin = 0 ){
   pal = palette
   pal = palette[palette$percent >= threshold, ]
   pal$percent = smart.round( pal$n/sum(pal$n), digits = 3 ) * 100
@@ -3429,11 +3434,13 @@ palette_visualize = function( im, palette, type = "bar", threshold = 1, monospac
     cy = cx = r = floor( size / 2 )
     t1_ = t2_ = 0
     out = nimg(array(1,c(size,size,3)))
+    out = paint_arc( out, cy, cx, r, size * color_bar_width/2, 0, 2 * pi, outline_color )
     for( i in 1:nrow(pal) ){
       col = c( pal$R[i], pal$G[i], pal$B[i] )
       t1 = t2_
       t2 = t1 + pal$percent[ i ] * 2 * pi / 100
-      out = paint_arc( out, cy, cx, r, size * color_bar_width/2, t1, t2, col)
+      out = paint_arc( out, cy, cx, r - outline_width,
+                       size * color_bar_width/2 - 2 * outline_width, t1, t2, col)
       t1_ = t1
       t2_ = t2
     }
@@ -3456,7 +3463,14 @@ palette_visualize = function( im, palette, type = "bar", threshold = 1, monospac
       bar[, w[ i ]:width, 2] = pal$G[ i ]
       bar[, w[ i ]:width, 3] = pal$B[ i ]
     }
-    bar[1:4,,] = c(1,1,1)
+    if( outline_width >= 1 ){
+      bar[c(1:outline_width, (im_height(bar) - outline_width + 1):im_height(bar)),,] = outline_color
+    }
+    if( margin > 0 ){
+      margin = clamping( margin )
+      blank = im_mono( c(1,1,1), round( im_height( im ) * margin ), width )
+      im = im_combine( im, blank, y = im_height( im ) )
+    }
     out = im_combine( im, bar, y = im_height( im ) )
     return(out)
   }
