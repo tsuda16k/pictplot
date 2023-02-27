@@ -45,8 +45,8 @@ Visualize the color palette of an image
 }
 \examples{
 palette = palette_extract(regatta)
-im = palette_visualize(regatta, palette, "bar")
+im = palette_visualize(regatta, palette$df, "bar")
 plot(im)
-im2 = palette_visualize(regatta, palette, "circle")
+im2 = palette_visualize(regatta, palette$df, "circle")
 plot(im2)
 }

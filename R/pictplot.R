@@ -2029,6 +2029,26 @@ im_serialize = function( im ){
 }
 
 
+#' Convert a serialized image to an image
+#' @param im serialized image array
+#' @param height image height
+#' @param width image width
+#' @param nc number of channels
+#' @examples
+#' se = im_serialize(regatta)
+#' im = im_serialize_inv(se, 450, 600)
+#' sum((regatta - im)^2)
+#' @export
+im_serialize_inv = function( im, height, width, nc = 3 ){
+  n = length(im) / nc
+  out = array( -1, dim = c(height, width, nc ) )
+  for( i in 1:nc ){
+    out[,,i] = matrix( im[(1+(i-1)*n):(i*n)], height, width )
+  }
+  return( nimg( out ) )
+}
+
+
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Luminance ----
 
@@ -3371,15 +3391,19 @@ circular_color_stat = function( im ){
 #' The input image will be reduced in size, with the shorter side equal to this value.
 #' @param iterations The number of iterations to perform mean shift classification.
 #' @examples
-#' palette_extract(regatta)
+#' palette = palette_extract(regatta)
+#' palette$df
+#' plot(palette$im)
 #' @export
 palette_extract = function( im, bandwidth = 0.03, bound = 40, iterations = 1000 ){
+  height = im_height(im)
+  width = im_width(im)
+
   im = im_resize_limit_min( im, bound )
   im2 = array( im_serialize( im ), c( im_width(im) * im_height(im), 3 ) )
   ms = meanShiftR::meanShift(
     im2, im2, bandwidth = rep( bandwidth, 3), iterations = iterations
   )
-
   col = unique( ms$value )
   col = sprintf( "%0.4f", col ) %>% as.numeric %>% matrix( ncol = 3 )
   df = data.frame( col )
@@ -3388,7 +3412,11 @@ palette_extract = function( im, bandwidth = 0.03, bound = 40, iterations = 1000 
   df$percent = smart.round( df$n/sum(df$n), digits = 3 ) * 100
   df = df[ order( df$n, decreasing = TRUE ), ]
   rownames( df ) = NULL
-  return( df )
+
+  p = im_serialize_inv(as.vector(ms$value), im_height(im), im_width(im))
+  p2 = im_resize(p, height, width, interpolation = 0)
+
+  return( list( df = df, im = p2) )
 }
 
 
@@ -3407,9 +3435,9 @@ palette_extract = function( im, bandwidth = 0.03, bound = 40, iterations = 1000 
 #' A numeric value between 0 and 1. The default is 0.
 #' @examples
 #' palette = palette_extract(regatta)
-#' im = palette_visualize(regatta, palette, "bar")
+#' im = palette_visualize(regatta, palette$df, "bar")
 #' plot(im)
-#' im2 = palette_visualize(regatta, palette, "circle")
+#' im2 = palette_visualize(regatta, palette$df, "circle")
 #' plot(im2)
 #' @export
 palette_visualize = function( im, palette, type = "bar", threshold = 1, monospace = FALSE, width, size,

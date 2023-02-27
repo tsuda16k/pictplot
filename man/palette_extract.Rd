@@ -25,5 +25,7 @@ This function performs color palette extraction of an image using the mean shift
 It uses the meanShift function in the meanShiftR package.
 }
 \examples{
-palette_extract(regatta)
+palette = palette_extract(regatta)
+palette$df
+plot(palette$im)
 }
